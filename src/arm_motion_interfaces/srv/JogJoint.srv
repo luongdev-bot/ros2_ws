@@ -1,0 +1,21 @@
+# Move a single joint, clamped to its configured limits.
+#
+# Revolute joints accept `delta` (relative) or `position` with absolute=true.
+# Gripper joints reject both and only accept `gripper_command`.
+string joint_name
+float64 delta
+float64 position
+bool absolute
+
+# "open" | "close" | "" (ignored for revolute joints)
+string gripper_command
+
+# Time allotted for the jog move.
+uint32 duration_ms
+---
+bool success
+string message
+# Position actually commanded after clamping to limits.
+float64 resulting_position
+# True when the request was clamped because it exceeded a joint limit.
+bool clamped

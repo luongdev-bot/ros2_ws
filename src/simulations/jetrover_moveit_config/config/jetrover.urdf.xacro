@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="jetrover">
+    <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
+    <xacro:arg name="use_gazebo" default="false" />
+
+    <!-- Import jetrover urdf file -->
+    <xacro:include filename="$(find jetrover_description)/urdf/jetrover_sim.xacro" />
+
+    <!-- Import control_xacro -->
+    <xacro:include filename="jetrover.ros2_control.xacro" />
+
+
+    <xacro:jetrover_ros2_control name="FakeSystem" initial_positions_file="$(arg initial_positions_file)"/>
+
+    <!-- Hosts controller_manager inside the Gazebo process and reads
+         ros2_controllers.yaml from this same package.
+         This machine runs Gazebo Sim 6 (Fortress), which loads
+         libign_ros2_control-system.so (ign_ros2_control::IgnitionROS2ControlPlugin).
+         The "gz_ros2_control-system" / GazeboSimROS2ControlPlugin names are for
+         Garden+ and silently fail to load on Fortress, leaving no
+         controller_manager - the arm then has nothing holding it and collapses. -->
+    <xacro:if value="$(arg use_gazebo)">
+        <gazebo>
+            <plugin filename="ign_ros2_control-system" name="ign_ros2_control::IgnitionROS2ControlPlugin">
+                <parameters>$(find jetrover_moveit_config)/config/ros2_controllers.yaml</parameters>
+            </plugin>
+        </gazebo>
+    </xacro:if>
+
+</robot>

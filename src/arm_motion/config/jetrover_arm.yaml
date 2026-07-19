@@ -1,0 +1,95 @@
+# JetRover arm profile for the action-group editor.
+#
+# Pulse <-> radian scaling: a 0..1000 pulse span covers 240 deg, so
+# pulse 500 = 0 rad and the ends land on +/-2.0944 rad. That matches the
+# +/-2.09 limits joint1..joint5 declare in the URDF.
+#
+# Tune per joint if a servo is mounted mirrored (invert: true) or has a
+# narrower usable range (min_rad / max_rad).
+
+joints:
+  - name: joint1          # base rotation
+    servo_id: 1
+    kind: revolute
+    group: arm
+    lower: -2.09
+    upper: 2.09
+    jog_step: 0.05
+    min_pulse: 0
+    max_pulse: 1000
+    min_rad: -2.0943951
+    max_rad: 2.0943951
+    invert: false
+
+  - name: joint2          # shoulder
+    servo_id: 2
+    kind: revolute
+    group: arm
+    lower: -2.09
+    upper: 2.09
+    jog_step: 0.05
+    min_pulse: 0
+    max_pulse: 1000
+    min_rad: -2.0943951
+    max_rad: 2.0943951
+    invert: false
+
+  - name: joint3          # elbow
+    servo_id: 3
+    kind: revolute
+    group: arm
+    lower: -2.09
+    upper: 2.09
+    jog_step: 0.05
+    min_pulse: 0
+    max_pulse: 1000
+    min_rad: -2.0943951
+    max_rad: 2.0943951
+    invert: false
+
+  - name: joint4          # wrist pitch
+    servo_id: 4
+    kind: revolute
+    group: arm
+    lower: -2.09
+    upper: 2.09
+    jog_step: 0.05
+    min_pulse: 0
+    max_pulse: 1000
+    min_rad: -2.0943951
+    max_rad: 2.0943951
+    invert: false
+
+  - name: joint5          # wrist roll
+    servo_id: 5
+    kind: revolute
+    group: arm
+    lower: -2.09
+    upper: 2.09
+    jog_step: 0.05
+    min_pulse: 0
+    max_pulse: 1000
+    min_rad: -2.0943951
+    max_rad: 2.0943951
+    invert: false
+
+  # The gripper only opens and closes. Continuous jogging is rejected by
+  # the domain, so the UI can only ever offer the two buttons.
+  - name: r_joint
+    servo_id: 10
+    kind: gripper
+    group: gripper
+    lower: -1.57
+    upper: 1.57
+    min_pulse: 0
+    max_pulse: 1000
+    min_rad: -1.57
+    max_rad: 1.57
+    invert: false
+    open_position: -1.00
+    closed_position: 0.30
+
+# FollowJointTrajectory action namespace per joint group.
+controllers:
+  arm: /arm_controller/follow_joint_trajectory
+  gripper: /gripper_controller/follow_joint_trajectory

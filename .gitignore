@@ -1,0 +1,18 @@
+# colcon build artifacts
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Vendored upstream sources — these have their own .git and are
+# cloned/updated from upstream, not tracked here.
+src/rtabmap/
+src/rtabmap_ros/
+
+# Editor / OS
+*.swp
+.DS_Store

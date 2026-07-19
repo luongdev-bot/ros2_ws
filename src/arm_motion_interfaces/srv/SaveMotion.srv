@@ -1,0 +1,9 @@
+# Persist a motion into the SQLite library.
+string name
+string description
+arm_motion_interfaces/MotionStep[] steps
+# Required to replace an existing motion of the same name (update in place).
+bool overwrite
+---
+bool success
+string message

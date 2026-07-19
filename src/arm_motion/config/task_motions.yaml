@@ -1,0 +1,28 @@
+# Which action group each task plays, and how long it may take.
+#
+# Other nodes send a PlayMotion goal with `task` set instead of hard-coding
+# a motion name, e.g. the SLAM bringup asks for task "slam3d" and the arm
+# folds to "home" within 1000 ms.
+#
+#   duration_ms: 0  -> keep the timings recorded in the .d6a file
+#   duration_ms: N  -> stretch/squeeze the whole motion to finish in N ms
+
+task_motions:
+  slam3d:
+    motion: home
+    duration_ms: 1000
+
+  nav:
+    motion: travel
+    duration_ms: 1500
+
+  pick:
+    motion: pick_init
+    duration_ms: 0
+
+  place:
+    motion: place_center
+    duration_ms: 0
+
+  # Shorthand form: motion name only, keeps the recorded timings.
+  stow: home

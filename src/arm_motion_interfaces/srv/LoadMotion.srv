@@ -1,0 +1,7 @@
+# Read a stored motion back, e.g. to reopen it in the editor.
+string name
+---
+bool success
+string message
+string description
+arm_motion_interfaces/MotionStep[] steps

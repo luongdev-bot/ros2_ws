@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="jetrover_gazebo" xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:property name="machine" value="$(env MACHINE_TYPE)"/>
+
+  <!-- ==================== Mecanum drivetrain ==================== -->
+  <xacro:if value="${machine == 'JetRover_Mecanum'}">
+    <gazebo>
+      <plugin filename="ignition-gazebo-mecanum-drive-system"
+              name="ignition::gazebo::systems::MecanumDrive">
+        <front_left_joint>wheel_left_front_joint</front_left_joint>
+        <front_right_joint>wheel_right_front_joint</front_right_joint>
+        <back_left_joint>wheel_left_back_joint</back_left_joint>
+        <back_right_joint>wheel_right_back_joint</back_right_joint>
+        <wheel_separation>0.2243</wheel_separation>
+        <wheelbase>0.1950</wheelbase>
+        <wheel_radius>0.049</wheel_radius>
+        <min_acceleration>-5</min_acceleration>
+        <max_acceleration>5</max_acceleration>
+        <topic>/cmd_vel</topic>
+      </plugin>
+    </gazebo>
+
+    <gazebo reference="wheel_left_front_link">
+      <mu1>1.0</mu1>
+      <mu2>1.0</mu2>
+    </gazebo>
+    <gazebo reference="wheel_left_back_link">
+      <mu1>1.0</mu1>
+      <mu2>1.0</mu2>
+    </gazebo>
+    <gazebo reference="wheel_right_front_link">
+      <mu1>1.0</mu1>
+      <mu2>1.0</mu2>
+    </gazebo>
+    <gazebo reference="wheel_right_back_link">
+      <mu1>1.0</mu1>
+      <mu2>1.0</mu2>
+    </gazebo>
+  </xacro:if>
+
+  <!-- Tank / Ackermann chassis xacros still use fixed wheel joints (display-only,
+       copied verbatim from the upstream Hiwonder repo) so they will not drive in
+       Gazebo yet. Apply the same fixed->continuous treatment done for
+       car_mecanum.gazebo.urdf.xacro, then add a DiffDrive (tank) or
+       AckermannSteering (acker) <plugin> block here to enable them. -->
+
+  <!-- ==================== Odometry + TF ==================== -->
+  <gazebo>
+    <plugin filename="ignition-gazebo-odometry-publisher-system"
+            name="ignition::gazebo::systems::OdometryPublisher">
+      <odom_frame>odom</odom_frame>
+      <robot_base_frame>base_footprint</robot_base_frame>
+      <dimensions>2</dimensions>
+      <odom_publish_frequency>30</odom_publish_frequency>
+      <odom_topic>/odom</odom_topic>
+      <tf_topic>/tf</tf_topic>
+    </plugin>
+  </gazebo>
+
+  <!-- ==================== Joint states ==================== -->
+  <gazebo>
+    <plugin filename="ignition-gazebo-joint-state-publisher-system"
+            name="ignition::gazebo::systems::JointStatePublisher">
+      <topic>/joint_states</topic>
+    </plugin>
+  </gazebo>
+
+  <!-- ==================== LiDAR ==================== -->
+  <gazebo reference="lidar_frame">
+    <sensor name="lidar" type="gpu_lidar">
+      <topic>/scan</topic>
+      <update_rate>10</update_rate>
+      <always_on>true</always_on>
+      <visualize>false</visualize>
+      <lidar>
+        <scan>
+          <horizontal>
+            <samples>360</samples>
+            <resolution>1</resolution>
+            <min_angle>-3.14159265</min_angle>
+            <max_angle>3.14159265</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.12</min>
+          <max>12.0</max>
+          <resolution>0.01</resolution>
+        </range>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.01</stddev>
+        </noise>
+      </lidar>
+    </sensor>
+  </gazebo>
+
+  <!-- ==================== IMU ==================== -->
+  <gazebo reference="imu_link">
+    <sensor name="imu_sensor" type="imu">
+      <topic>/imu</topic>
+      <update_rate>100</update_rate>
+      <always_on>true</always_on>
+      <visualize>false</visualize>
+    </sensor>
+  </gazebo>
+
+  <!-- ==================== Depth camera ==================== -->
+  <gazebo reference="depth_cam_frame">
+    <sensor name="depth_camera" type="rgbd_camera">
+      <topic>/depth_cam</topic>
+      <update_rate>15</update_rate>
+      <always_on>true</always_on>
+      <visualize>false</visualize>
+      <camera>
+        <horizontal_fov>1.089</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.1</near>
+          <far>10.0</far>
+        </clip>
+      </camera>
+    </sensor>
+  </gazebo>
+</robot>

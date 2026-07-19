@@ -1,0 +1,19 @@
+# Execute a stored motion on the arm.
+#
+# Either `motion_name` or `task` must be set. `task` is resolved through the
+# task -> motion mapping (config/task_motions.yaml), e.g. task "slam3d"
+# resolves to motion "home" with a 1000 ms budget.
+string motion_name
+string task
+
+# Total wall time the whole motion must complete in. 0 = use the per-step
+# durations stored with the motion.
+uint32 duration_ms
+---
+bool success
+string message
+uint32 steps_executed
+---
+uint32 step_index
+uint32 step_count
+float64 progress

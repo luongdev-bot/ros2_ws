@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="jetrover" xmlns:xacro="http://ros.org/wiki/xacro">
+    <!-- Gazebo-simulation variant of jetrover.xacro: identical robot, except
+         the drivetrain chassis is swapped for a version whose wheel joints
+         are `continuous` (so Gazebo can spin them) instead of `fixed`
+         (display-only, as shipped upstream), and a gazebo.urdf.xacro overlay
+         adds drive/odometry/sensor <gazebo> plugin tags. See gazebo.urdf.xacro
+         for which chassis types are currently wired up. -->
+    <xacro:property name="lidar"        value="$(env LIDAR_TYPE)"/>
+    <xacro:property name="machine"      value="$(env MACHINE_TYPE)"/>
+
+    <xacro:include filename="$(find jetrover_description)/urdf/materials.xacro"/>
+    <xacro:include filename="$(find jetrover_description)/urdf/inertial_matrix.xacro" />
+
+    <xacro:if value="${lidar in ['A1', 'A2', 'S2L', 'LD14P']}">
+        <xacro:include filename="$(find jetrover_description)/urdf/lidar_a1.urdf.xacro"/>
+    </xacro:if>
+    <xacro:if value="${lidar in ['G4']}">
+        <xacro:include filename="$(find jetrover_description)/urdf/lidar_g4.urdf.xacro"/>
+    </xacro:if>
+
+    <xacro:if value="${machine == 'JetRover_Mecanum'}">
+        <xacro:include filename="$(find jetrover_description)/urdf/car_mecanum.gazebo.urdf.xacro"/>
+        <xacro:include filename="$(find jetrover_description)/urdf/lidar.urdf.xacro"/>
+    </xacro:if>
+    <xacro:if value="${machine == 'JetRover_Tank'}">
+        <xacro:include filename="$(find jetrover_description)/urdf/car_tank.urdf.xacro"/>
+        <xacro:include filename="$(find jetrover_description)/urdf/lidar.urdf.xacro"/>
+    </xacro:if>
+    <xacro:if value="${machine == 'JetRover_Acker'}">
+        <xacro:include filename="$(find jetrover_description)/urdf/car_acker.urdf.xacro"/>
+        <xacro:include filename="$(find jetrover_description)/urdf/lidar.urdf.xacro"/>
+    </xacro:if>
+
+    <xacro:include filename="$(find jetrover_description)/urdf/imu.urdf.xacro"/>
+    <xacro:include filename="$(find jetrover_description)/urdf/depth_camera.urdf.xacro"/>
+    <xacro:include filename="$(find jetrover_description)/urdf/common.urdf.xacro"/>
+    <xacro:include filename="$(find jetrover_description)/urdf/connect.urdf.xacro"/>
+    <xacro:include filename="$(find jetrover_description)/urdf/arm.urdf.xacro"/>
+    <xacro:include filename="$(find jetrover_description)/urdf/gripper.urdf.xacro"/>
+
+    <xacro:include filename="$(find jetrover_description)/urdf/gazebo.urdf.xacro"/>
+</robot>
