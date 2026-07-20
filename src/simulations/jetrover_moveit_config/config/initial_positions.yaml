@@ -1,9 +1,24 @@
-# Default initial positions for jetrover's ros2_control fake system
+# Default initial positions for jetrover's ros2_control system.
+#
+# This is the taught "ready to pick" pose from
+# ~/ActionGroups/pick_init.d6a  (servo pulses 875, 700, 15, 215, 500, 500),
+# converted to URDF radians through arm_motion/config/jetrover_arm.yaml.
+#
+# Why pick_init and not a camera-down pose with joint1=0: pick.d6a swings
+# the base 90 deg (joint1 = 875 pulses) and grasps at (0.025, -0.245) in
+# base_footprint. A pose with joint1=0 aims the camera straight ahead, where
+# the arm never reaches - the robot would see a block it cannot pick. At
+# pick_init the camera looks down the same direction the arm works in, so
+# the grasp point sits in frame at pixel (320, 435) and the four blocks of
+# jetrover_gazebo/worlds/color_blocks_world.sdf are all visible.
+#
+# All zeros - the original default - pointed the arm straight up, so the
+# camera stared at the sky and arm_perception never saw a single block.
 
 initial_positions:
-  joint1: 0
-  joint2: 0
-  joint3: 0
-  joint4: 0
-  joint5: 0
-  r_joint: 0
+  joint1: 1.5708
+  joint2: -0.8378
+  joint3: 2.0316
+  joint4: 1.1938
+  joint5: 0.0
+  r_joint: 0.0

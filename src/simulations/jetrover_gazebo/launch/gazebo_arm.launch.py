@@ -65,13 +65,23 @@ def generate_launch_description():
     )
     robot_name_arg = DeclareLaunchArgument('robot_name', default_value='jetrover')
 
+    # The pose the arm boots in is task-specific, so it is an argument rather
+    # than a constant: arm_perception wants pick_init (the default below), the
+    # SLAM sims want the horizontal pose that aims the depth camera forward
+    # (config/slam_initial_positions.yaml). Sharing one file made the two
+    # fight - see the comments in both yaml files.
+    initial_positions_arg = DeclareLaunchArgument(
+        'initial_positions_file',
+        default_value=os.path.join(
+            jetrover_moveit_config_share, 'config', 'initial_positions.yaml'),
+        description='YAML of initial joint positions for the gz_ros2_control system.',
+    )
+
     urdf_path = os.path.join(jetrover_moveit_config_share, 'config', 'jetrover.urdf.xacro')
-    initial_positions_path = os.path.join(
-        jetrover_moveit_config_share, 'config', 'initial_positions.yaml')
     robot_description = Command([
         'xacro ', urdf_path,
         ' use_gazebo:=true',
-        ' initial_positions_file:=', initial_positions_path,
+        ' initial_positions_file:=', LaunchConfiguration('initial_positions_file'),
     ], on_stderr='warn')
 
     gz_sim = IncludeLaunchDescription(
@@ -103,8 +113,14 @@ def generate_launch_description():
     )
 
     # Gazebo's rgbd_camera reports header.frame_id "jetrover/link4/depth_camera"
-    # after URDF->SDF conversion; depth_cam_frame is co-located with it, so an
-    # identity transform lets RTAB-Map (and MoveIt's octomap) resolve the TF.
+    # after URDF->SDF conversion, which ROS consumers cannot resolve. Anchor it
+    # to depth_cam_frame, NOT depth_cam_link: the sensor is mounted on
+    # depth_cam_link because Gazebo aims cameras along +X, but every ROS
+    # consumer of the image (image_geometry, depth_image_proc, RTAB-Map,
+    # MoveIt's octomap) assumes the header frame uses the OPTICAL convention
+    # (+Z forward). depth_cam_frame is exactly that frame, and its +Z equals
+    # depth_cam_link's +X. Anchoring to depth_cam_link instead projects every
+    # 3D point behind the camera - verified with a known-position object.
     depth_cam_frame_bridge = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
@@ -180,6 +196,7 @@ def generate_launch_description():
         SetParameter(name='use_sim_time', value=True),
         world_arg,
         robot_name_arg,
+        initial_positions_arg,
         gz_sim,
         robot_state_publisher_node,
         spawn_node,

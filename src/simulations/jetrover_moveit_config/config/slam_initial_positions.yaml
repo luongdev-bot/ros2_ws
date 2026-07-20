@@ -1,0 +1,26 @@
+# Initial arm positions for the SLAM simulations (2D and 3D).
+#
+# This is the taught "horizontal" pose from ~/ActionGroups/horizontal.d6a
+# (servo pulses 470, 662, 225, 219, 500, 596), converted to URDF radians
+# through arm_motion/config/jetrover_arm.yaml. It is the same action group
+# Hiwonder runs before 3D SLAM on the real robot.
+#
+# Forward kinematics on jetrover_sim.xacro at this pose:
+#   depth_cam_frame at (0.071, 0.006, 0.489) in base_footprint
+#   viewing direction (0.989, 0.125, -0.080) -> forward, 4.6 deg down
+#   lowest arm link z = 0.227 m, above the lidar plane (0.157 m), so the
+#   arm never occludes /scan
+#
+# Why a separate file from initial_positions.yaml: that one holds the
+# pick_init pose for arm_perception's colour picking, where joint1 = 1.5708
+# swings the arm 90 deg sideways and the camera looks down-right
+# (view direction 0.000, -0.685, -0.729). Booting 3D SLAM from that pose
+# aimed RTAB-Map at the floor beside the robot instead of ahead of it.
+
+initial_positions:
+  joint1: -0.1257
+  joint2: -0.6786
+  joint3: 1.1519
+  joint4: 1.1771
+  joint5: 0.0
+  r_joint: 0.3014

@@ -105,9 +105,13 @@
   </joint>
   <link name="depth_cam_frame">
     <!-- Tiny dummy inertia: a fully massless link gets lumped into its
-         parent by the URDF->SDF converter, so Gazebo's rgbd_camera sensor
-         (attached here) ends up reporting frame_id "link4" instead of
-         "depth_cam_frame", which breaks MoveIt's octomap TF lookup. -->
+         parent by the URDF->SDF converter, which affects how the camera
+         frame is named after conversion.
+         NOTE: the rgbd_camera sensor is NOT attached to this link. It sits
+         on depth_cam_link (see gazebo.urdf.xacro) because Gazebo aims a
+         camera along the frame's +X, while this frame is the ROS optical
+         convention (+Z forward). This link remains the optical frame that
+         ROS-side consumers should use. -->
     <inertial>
       <mass value="0.0001" />
       <inertia ixx="1e-9" ixy="0" ixz="0" iyy="1e-9" iyz="0" izz="1e-9" />

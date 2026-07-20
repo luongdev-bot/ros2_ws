@@ -106,7 +106,17 @@
   </gazebo>
 
   <!-- ==================== Depth camera ==================== -->
-  <gazebo reference="depth_cam_frame">
+  <!-- Attach the sensor to depth_cam_link, NOT depth_cam_frame.
+       depth_cam_frame is the ROS *optical* frame (+Z forward, per
+       depth_cam_joint_sim's rpy=-90,0,-90). Gazebo aims a camera along the
+       +X axis of the frame it is mounted on, so mounting it on the optical
+       frame pointed the camera 90 deg off - along the robot's -Y (its right)
+       instead of along the arm. Verified by spawning the robot in a world of
+       colour-coded walls: the frame came back 100% of the -Y wall.
+       depth_cam_link already has +X along the arm, which is what Gazebo wants.
+       Fixed joints collapse during URDF->SDF conversion, so the emitted
+       frame_id is still "<model>/link4/depth_camera". -->
+  <gazebo reference="depth_cam_link">
     <sensor name="depth_camera" type="rgbd_camera">
       <topic>/depth_cam</topic>
       <update_rate>15</update_rate>
