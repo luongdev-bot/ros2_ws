@@ -5,56 +5,72 @@
 
 ## Quy trình code
 
-Sau khi viết hoặc sửa code xong, LUÔN review các thay đổi chưa commit
-TRƯỚC khi báo hoàn thành. Có hai reviewer; dùng Copilot làm mặc định.
+Reviewer là **Codex**. Sau khi viết hoặc sửa code xong, LUÔN review
+TRƯỚC khi báo hoàn thành.
 
-### Mặc định — GitHub Copilot CLI
+### Cách gọi — MCP tool (mặc định)
 
-Copilot CLI không chạy được ở chế độ MCP server (`copilot mcp` chỉ để
-quản lý MCP server của nó), nên gọi qua Bash:
+Gọi tool `codex` của MCP server `codex-cli` đã đăng ký. Đây là tool
+prompt-based, không phải subcommand `codex review` của CLI:
 
-```bash
-copilot -p "Review the uncommitted changes in this repo. Run \`git diff\` \
-and \`git diff --staged\` to see them. Report bugs, correctness issues, \
-and design problems with file:line anchors. Do NOT modify any files." \
-  --deny-tool='write' \
-  --allow-tool='shell(git diff)' \
-  --allow-tool='shell(git diff --staged)' \
-  --allow-tool='shell(git status)' \
-  --allow-tool='shell(git log)'
+```yaml
+tool: mcp__codex-cli__codex
+prompt: >-
+  Review all uncommitted changes. Inspect `git status --short`,
+  `git diff`, `git diff --cached`, and any untracked files. Report
+  bugs and design problems with file:line anchors.
+  Do not modify any files.
+cwd: /home/luong/ros2_ws
+sandbox: read-only
+approval-policy: never
 ```
 
-- `--deny-tool='write'` là ràng buộc chính khiến Copilot không sửa được
-  code — không chỉ dựa vào câu "do NOT modify" trong prompt. Luôn giữ
-  flag này; không dùng `--allow-all-tools` / `--yolo` cho bước review.
-- Allowlist khớp lỏng (một chuỗi lệnh ghép `git a && git b` vẫn qua),
-  nên đừng nới thành `shell(git)` — sẽ cho phép cả `git reset --hard`
-  và `git push`.
-- Tốn khoảng 6 AI credits mỗi lần review. Ưu tiên review ở mốc có ý
-  nghĩa (xong một tính năng) hơn là sau mỗi sửa đổi nhỏ.
+`sandbox: read-only` là ràng buộc thật khiến Codex không sửa được code —
+không chỉ dựa vào câu "do not modify" trong prompt. Luôn giữ.
 
-### Thay thế — Codex CLI
+Tool trả kết quả có cấu trúc kèm `threadId`; dùng `codex-reply` với
+threadId đó để hỏi tiếp trong cùng phiên thay vì mở phiên mới.
 
-`codex review` là subcommand chuyên cho review, chạy non-interactive:
+### Cách gọi — CLI (thay thế)
 
 ```bash
-codex review --uncommitted
+codex review --uncommitted                   # thay đổi chưa commit
+codex review --commit 66033de                # đúng một commit
+codex review --base main                     # diff so với nhánh gốc
+codex review --uncommitted 'Focus on bugs'   # thêm hướng dẫn riêng
 ```
 
-Biến thể: `--commit <SHA>` (một commit), `--base <BRANCH>` (diff so với
-nhánh gốc), hoặc truyền chuỗi hướng dẫn riêng làm tham số.
+Chuỗi hướng dẫn là tham số vị trí; đặt trong **ngoặc đơn** để shell
+không diễn giải backtick, `$(...)` hay biến. Thay `66033de` / `main`
+bằng giá trị thật — đừng gõ dấu ngoặc nhọn vì shell coi `<` `>` là
+chuyển hướng.
 
-> **Quota:** tài khoản Codex (gói Go) đã hết hạn mức ngày 20/07/2026,
-> reset **26/07/2026 21:22**. Trước mốc đó lệnh sẽ báo
-> `You've hit your usage limit` và review đứt giữa chừng — dùng Copilot.
+Nếu ghi output ra file, ghi vào `/tmp` chứ **đừng ghi trong worktree**:
+`--uncommitted` bao gồm cả file chưa track, nên Codex sẽ review chính
+file output đang lớn dần của nó.
 
-### Chung cho cả hai
+### Quy tắc chung
 
-- Nếu reviewer chỉ ra lỗi hoặc góp ý hợp lý, tự sửa lại rồi review lần
-  nữa cho đến khi không còn lỗi nghiêm trọng.
-- Không dùng Copilot hay Codex để viết code — chỉ dùng để review.
+**Chạy từ trong git worktree.** Thư mục con nào của repo cũng được; chỉ
+khi chạy ngoài worktree thì lệnh git bên trong mới fail exit 128 và
+Codex trả output vô nghĩa thay vì báo lỗi rõ.
+
+**Giữ diff nhỏ.** Review trên diff 50+ file mất nhiều phút và thường
+timeout. Commit theo từng chủ đề rồi review từng phần. Codex đưa nhận
+xét sau khi đọc hết diff, nên timeout giữa chừng đồng nghĩa không có
+nhận xét nào — đó là timeout, đừng nhầm là Codex im lặng.
+
+**Vòng lặp sửa — review lại.** Sau khi sửa theo góp ý, `--commit <SHA cũ>`
+vẫn review commit cũ chứ không thấy phần sửa. Dùng `--uncommitted` cho
+phần vừa sửa, hoặc commit/amend rồi truyền SHA mới.
+
+- Nếu Codex chỉ ra lỗi hoặc góp ý hợp lý, tự sửa lại rồi review lần nữa
+  cho đến khi không còn lỗi nghiêm trọng.
+- Không dùng Codex để viết code — chỉ dùng để review. Không chạy
+  `codex exec` hay `codex apply` cho mục đích này.
 - Nếu lệnh lỗi, hết quota, hoặc không phản hồi, báo cho tôi biết thay vì
   bỏ qua bước review.
 
-Workspace này là git repo, nên `git diff` là nguồn sự thật cho "thay đổi
-chưa commit". Nếu working tree clean thì không có gì để review.
+Bước này là bắt buộc trước khi báo hoàn thành. Agent `ros2-style-reviewer`
+trong `.claude/CLAUDE.md` là công cụ riêng cho review kiến trúc trước khi
+mở PR — dùng thêm khi cần, không thay thế bước trên.
