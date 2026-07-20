@@ -1,0 +1,53 @@
+# Colour thresholds and the action group each colour triggers.
+#
+# LAB bounds are OpenCV 8-bit: L 0..255, a 0..255 (128 neutral),
+# b 0..255 (128 neutral). Thresholds are deliberately wide on L and tight
+# on a/b - lightness swings with shadow, chromaticity does not.
+#
+# TUNING: these values were derived from the block materials in
+# jetrover_gazebo/worlds/color_blocks_world.sdf and are a *starting
+# point*. On real hardware, or after changing the world lighting, read
+# the actual values off a block:
+#
+#   ros2 topic echo /color_pick/detections          # is it detected at all?
+#   ros2 run rqt_image_view rqt_image_view          # view /color_pick/debug_image
+#
+# then widen the offending channel. A colour that never fires is usually
+# too tight on `a`; a colour that fires on the floor is too wide on both.
+#
+# `motion` must name a .d6a file in the action-group library
+# (~/ActionGroups by default - see arm_motion's `library_dir`).
+# `duration_ms: 0` keeps the timings recorded inside the .d6a.
+
+# NOTE: every colour currently maps to the same action group on purpose -
+# this is a placeholder while the pipeline is being brought up, not a
+# copy-paste slip. Give each colour its own motion to sort by colour.
+
+colors:
+  red:
+    lab_min: [40, 150, 140]
+    lab_max: [255, 255, 255]
+    min_area_px: 200
+    motion: horizontal
+    duration_ms: 0
+
+  green:
+    lab_min: [40, 0, 140]
+    lab_max: [255, 105, 255]
+    min_area_px: 200
+    motion: horizontal
+    duration_ms: 0
+
+  blue:
+    lab_min: [20, 120, 0]
+    lab_max: [255, 215, 105]
+    min_area_px: 200
+    motion: horizontal
+    duration_ms: 0
+
+  yellow:
+    lab_min: [80, 108, 165]
+    lab_max: [255, 145, 255]
+    min_area_px: 200
+    motion: horizontal
+    duration_ms: 0
