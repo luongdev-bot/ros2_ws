@@ -79,6 +79,9 @@ class ArmMotionServer(Node):
         self.declare_parameter("library_dir", DEFAULT_LIBRARY_DIR)
         self.declare_parameter("joint_states_topic", "/joint_states")
         self.declare_parameter("server_wait_timeout", 5.0)
+        # Action group the arm always passes through before the requested one.
+        # "" disables it. Playing the prelude itself does not re-run it.
+        self.declare_parameter("prelude_motion", "home")
 
         robot_config_path = self.get_parameter("robot_config").value
         task_config_path = self.get_parameter("task_config").value
@@ -119,12 +122,18 @@ class ArmMotionServer(Node):
             ),
         )
 
+        prelude = str(self.get_parameter("prelude_motion").value or "").strip()
         self._play = PlayMotionUseCase(
             repository=self._repository,
             executor=self._executor_adapter,
             profile=self._profile,
             task_motions=task_motions,
+            prelude_motion=prelude,
         )
+        if prelude:
+            self.get_logger().info(
+                f"every motion runs through '{prelude}' first"
+            )
         self._save = SaveMotionUseCase(self._repository)
         self._load = LoadMotionUseCase(self._repository)
         self._list = ListMotionsUseCase(self._repository)
@@ -324,7 +333,10 @@ class ArmMotionServer(Node):
                     "no /joint_states received yet; is the controller running?"
                 )
                 return response
-            base = self._profile.fill_missing(base)
+            # Clamp the measured pose to limits before we build on it: a joint
+            # reading (from a mis-calibrated servo, say) must never be forwarded
+            # into the trajectory just because it is not the joint being jogged.
+            base = self._profile.clamp_pose(self._profile.fill_missing(base))
 
             if spec.kind is JointKind.GRIPPER:
                 pose, clamped = self._jog_gripper(base, request, spec)

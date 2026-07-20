@@ -40,12 +40,20 @@ class PlayMotionResult:
 
 @dataclass(frozen=True)
 class PlayMotionUseCase:
-    """Resolve a request to a motion, validate it, and execute it."""
+    """Resolve a request to a motion, validate it, and execute it.
+
+    ``prelude_motion`` names an action group the arm always passes through
+    before the requested one - typically "home". Its steps are prepended to
+    the resolved motion and the whole thing runs as a single trajectory, so
+    progress reporting and cancellation stay correct across the join.
+    Set it to "" to disable.
+    """
 
     repository: MotionRepository
     executor: TrajectoryExecutor
     profile: RobotProfile
     task_motions: TaskMotionMap
+    prelude_motion: str = ""
 
     def resolve(self, request: PlayMotionRequest) -> Motion:
         """Load and prepare the motion without executing it."""
@@ -58,11 +66,23 @@ class PlayMotionUseCase:
             name = request.motion_name
             duration_ms = request.duration_ms
 
+        motion = self._load_validated(name)
+
+        # Rescale before prepending the prelude: `duration_ms` is the budget
+        # for the motion that was asked for, not for the trip home first.
+        if duration_ms > 0:
+            motion = motion.rescaled(duration_ms)
+
+        return self._with_prelude(motion, name)
+
+    def _load_validated(self, name: str) -> Motion:
+        """Load ``name`` and reject any pose the arm is not allowed to reach.
+
+        Files on disk can predate the current joint limits, so every step is
+        re-checked against the profile rather than trusted.
+        """
         motion = self.repository.load(name)
         motion.require_steps()
-
-        # Never dispatch a pose the arm is not allowed to reach, even if an
-        # older file on disk contains one.
         for index, step in enumerate(motion.steps):
             try:
                 self.profile.validate_pose(step.pose)
@@ -70,10 +90,27 @@ class PlayMotionUseCase:
                 raise InvalidMotionError(
                     f"motion '{name}' step {index + 1}: {exc}"
                 ) from exc
-
-        if duration_ms > 0:
-            motion = motion.rescaled(duration_ms)
         return motion
+
+    def _with_prelude(self, motion: Motion, name: str) -> Motion:
+        """Prepend the configured prelude, unless it is what was asked for."""
+        if not self.prelude_motion or name == self.prelude_motion:
+            return motion
+
+        try:
+            prelude = self._load_validated(self.prelude_motion)
+        except InvalidMotionError:
+            raise
+        except Exception as exc:
+            # A missing prelude must not silently skip the safety pose - the
+            # whole point of configuring one is that the arm always goes
+            # through it.
+            raise InvalidMotionError(
+                f"prelude motion '{self.prelude_motion}' could not be loaded: "
+                f"{exc}. Set the 'prelude_motion' parameter to '' to disable it."
+            ) from exc
+
+        return motion.prepended_with(prelude)
 
     def execute(
         self,

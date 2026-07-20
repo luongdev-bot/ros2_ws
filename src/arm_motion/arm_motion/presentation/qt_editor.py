@@ -12,18 +12,24 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, QUrl, pyqtSignal
+from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -35,13 +41,77 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from ..application.edit_session import EditSession
+from ..application.edit_session import UNTITLED, EditSession
 from ..domain.errors import ArmMotionError, MotionAlreadyExistsError
 from ..domain.joint_spec import GripperCommand, JointKind, JointSpec
+from ..domain.motion import Motion
 from .ros_bridge import EditorRosBridge, Worker
 
 # Slider drags are coalesced: we only command the arm once the user pauses.
 LIVE_DEBOUNCE_MS = 120
+
+
+class _IntegrateDialog(QDialog):
+    """Pick and order several action groups to concatenate into one."""
+
+    def __init__(self, parent, names):
+        super().__init__(parent)
+        self.setWindowTitle("Integrate action groups")
+        self.resize(360, 380)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel(
+            "Tick the groups to combine, then order them top to bottom:"
+        ))
+
+        self._list = QListWidget()
+        for name in names:
+            item = QListWidgetItem(name)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Unchecked)
+            self._list.addItem(item)
+        layout.addWidget(self._list, 1)
+
+        order_row = QHBoxLayout()
+        up = QPushButton("Move up")
+        down = QPushButton("Move down")
+        up.clicked.connect(lambda: self._move(-1))
+        down.clicked.connect(lambda: self._move(1))
+        order_row.addWidget(up)
+        order_row.addWidget(down)
+        order_row.addStretch(1)
+        layout.addLayout(order_row)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _move(self, offset: int) -> None:
+        row = self._list.currentRow()
+        target = row + offset
+        if row < 0 or not 0 <= target < self._list.count():
+            return
+        item = self._list.takeItem(row)
+        self._list.insertItem(target, item)
+        self._list.setCurrentRow(target)
+
+    def _checked_names(self):
+        return [
+            self._list.item(i).text()
+            for i in range(self._list.count())
+            if self._list.item(i).checkState() == Qt.Checked
+        ]
+
+    @classmethod
+    def pick(cls, parent, names):
+        """Return the chosen names in order, or [] if cancelled/empty."""
+        dialog = cls(parent, names)
+        if dialog.exec_() != QDialog.Accepted:
+            return []
+        return dialog._checked_names()
 
 
 class EditorWindow(QMainWindow):
@@ -57,6 +127,7 @@ class EditorWindow(QMainWindow):
         self._bridge = bridge
         self._session = EditSession(profile=bridge.profile)
         self._sliders: Dict[str, QSlider] = {}
+        self._pulse_spins: Dict[str, QSpinBox] = {}
         self._value_labels: Dict[str, QLabel] = {}
         self._updating_ui = False
         self._playing = False
@@ -94,6 +165,7 @@ class EditorWindow(QMainWindow):
 
         for row, spec in enumerate(self._bridge.profile.joints):
             scale = self._bridge.profile.scale(spec.name)
+            lo, hi = sorted((scale.min_pulse, scale.max_pulse))
             grid.addWidget(QLabel(f"<b>ID:{scale.servo_id}</b>"), row, 0)
             grid.addWidget(QLabel(spec.name), row, 1)
 
@@ -101,7 +173,6 @@ class EditorWindow(QMainWindow):
                 grid.addWidget(self._build_gripper_controls(spec), row, 2)
             else:
                 slider = QSlider(Qt.Horizontal)
-                lo, hi = sorted((scale.min_pulse, scale.max_pulse))
                 slider.setRange(lo, hi)
                 slider.setValue(scale.to_pulse(self._session.live_pose[spec.name]))
                 slider.valueChanged.connect(
@@ -110,10 +181,21 @@ class EditorWindow(QMainWindow):
                 self._sliders[spec.name] = slider
                 grid.addWidget(slider, row, 2)
 
+                # Editable pulse box, like the "500" entry in the arm_pc GUI.
+                spin = QSpinBox()
+                spin.setRange(lo, hi)
+                spin.setValue(slider.value())
+                spin.setKeyboardTracking(False)  # only fire on Enter / focus-out
+                spin.valueChanged.connect(
+                    lambda value, name=spec.name: self._on_pulse_entry(name, value)
+                )
+                self._pulse_spins[spec.name] = spin
+                grid.addWidget(spin, row, 3)
+
             label = QLabel()
-            label.setMinimumWidth(150)
+            label.setMinimumWidth(140)
             self._value_labels[spec.name] = label
-            grid.addWidget(label, row, 3)
+            grid.addWidget(label, row, 4)
 
         controls = QHBoxLayout()
         self._live_check = QCheckBox("Live (follow sliders in Gazebo)")
@@ -129,7 +211,7 @@ class EditorWindow(QMainWindow):
         self._center_button = QPushButton("Reset to centre")
         controls.addWidget(self._center_button)
 
-        grid.addLayout(controls, len(self._bridge.profile.joints), 0, 1, 4)
+        grid.addLayout(controls, len(self._bridge.profile.joints), 0, 1, 5)
         return box
 
     def _build_gripper_controls(self, spec: JointSpec) -> QWidget:
@@ -202,18 +284,44 @@ class EditorWindow(QMainWindow):
             edit_grid.addWidget(button, index // 3, index % 3)
         layout.addLayout(edit_grid)
 
+        # Which folder the action-group files live in. The user can point this
+        # at any folder, so motions can be kept in a project of their own.
+        folder_row = QHBoxLayout()
+        folder_row.addWidget(QLabel("Folder"))
+        self._folder_label = QLabel()
+        self._folder_label.setStyleSheet("color: palette(mid);")
+        self._folder_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        folder_row.addWidget(self._folder_label, 1)
+        self._change_folder_button = QPushButton("Change folder...")
+        self._open_folder_button = QPushButton("Open in files")
+        self._integrate_button = QPushButton("Integrate files")
+        self._integrate_button.setToolTip(
+            "Combine several saved action groups into one, end to end"
+        )
+        folder_row.addWidget(self._change_folder_button)
+        folder_row.addWidget(self._open_folder_button)
+        folder_row.addWidget(self._integrate_button)
+        layout.addLayout(folder_row)
+
         file_row = QHBoxLayout()
         self._motion_combo = QComboBox()
         self._motion_combo.setMinimumWidth(160)
         file_row.addWidget(QLabel("Action group"))
         file_row.addWidget(self._motion_combo, 1)
         self._open_button = QPushButton("Open action file")
-        self._save_button = QPushButton("Save action file")
+        self._save_button = QPushButton("Save as...")
+        self._update_file_button = QPushButton("Update motion")
+        self._update_file_button.setToolTip(
+            "Save over the file currently open (overwrite it in place)"
+        )
+        self._delete_file_button = QPushButton("Delete file")
         self._refresh_button = QPushButton("Refresh")
         self._new_button = QPushButton("New")
         for button in (
             self._open_button,
             self._save_button,
+            self._update_file_button,
+            self._delete_file_button,
             self._refresh_button,
             self._new_button,
         ):
@@ -249,8 +357,13 @@ class EditorWindow(QMainWindow):
 
         self._open_button.clicked.connect(self._on_open)
         self._save_button.clicked.connect(self._on_save)
+        self._update_file_button.clicked.connect(self._on_update_file)
+        self._delete_file_button.clicked.connect(self._on_delete_file)
         self._refresh_button.clicked.connect(self._refresh_library)
         self._new_button.clicked.connect(self._on_new)
+        self._change_folder_button.clicked.connect(self._on_change_folder)
+        self._open_folder_button.clicked.connect(self._on_open_folder_in_files)
+        self._integrate_button.clicked.connect(self._on_integrate)
 
         self._run_button.clicked.connect(self._on_run)
         self._stop_button.clicked.connect(self._on_stop)
@@ -269,13 +382,25 @@ class EditorWindow(QMainWindow):
     def _on_slider(self, joint_name: str, value: int) -> None:
         if self._updating_ui:
             return
+        self._apply_pulse(joint_name, value)
+
+    def _on_pulse_entry(self, joint_name: str, value: int) -> None:
+        """The numeric pulse box was edited (like the arm_pc '500' entry)."""
+        if self._updating_ui:
+            return
+        self._apply_pulse(joint_name, value)
+
+    def _apply_pulse(self, joint_name: str, value: int) -> None:
+        """Set a joint from a pulse value and keep slider + spin box in sync."""
         applied = self._session.set_pulse(joint_name, value)
-        if applied != value:
-            # The joint limit is tighter than the slider range — snap back.
-            slider = self._sliders[joint_name]
-            self._updating_ui = True
-            slider.setValue(applied)
-            self._updating_ui = False
+        # Snap both widgets to the value actually applied (a joint limit may be
+        # tighter than the slider/spin range).
+        self._updating_ui = True
+        if joint_name in self._sliders:
+            self._sliders[joint_name].setValue(applied)
+        if joint_name in self._pulse_spins:
+            self._pulse_spins[joint_name].setValue(applied)
+        self._updating_ui = False
         self._refresh_value_labels()
         self._schedule_live_move()
 
@@ -382,6 +507,111 @@ class EditorWindow(QMainWindow):
         self._session.new()
         self._refresh_all()
 
+    def _on_change_folder(self) -> None:
+        """Point the library at a different folder of .d6a files."""
+        if not self._confirm_discard():
+            return
+        chosen = QFileDialog.getExistingDirectory(
+            self,
+            "Choose an action-group folder",
+            str(self._bridge.library_dir()),
+        )
+        if not chosen:
+            return
+        try:
+            self._bridge.set_library_dir(chosen)
+        except Exception as exc:  # noqa: BLE001
+            self._show_status(f"Could not open folder: {exc}")
+            return
+        self._session.new()
+        self._refresh_all()
+        self._show_status(f"Folder: {self._bridge.library_dir()}")
+
+    def _on_open_folder_in_files(self) -> None:
+        """Open the current folder in the system file manager."""
+        path = str(self._bridge.library_dir())
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(path)):
+            self._show_status(f"Folder is at: {path}")
+
+    def _on_integrate(self) -> None:
+        """Combine several saved action groups into one, end to end.
+
+        Mirrors the arm_pc "Integrate file" function: the chosen motions'
+        steps are concatenated, in the chosen order, into a new unsaved buffer
+        the user can then Save as.
+        """
+        if not self._confirm_discard():
+            return
+        try:
+            names = self._bridge.motion_names()
+        except Exception as exc:  # noqa: BLE001
+            self._show_status(f"Could not list the folder: {exc}")
+            return
+        if len(names) < 2:
+            self._show_status("Need at least two saved action groups to integrate")
+            return
+
+        ordered = _IntegrateDialog.pick(self, names)
+        if not ordered:
+            return
+        if len(ordered) < 2:
+            self._show_status("Tick at least two action groups to integrate")
+            return
+
+        steps = []
+        for name in ordered:
+            try:
+                motion = self._bridge.load_motion.execute(name)
+            except Exception as exc:  # noqa: BLE001
+                self._show_status(f"Integrate failed on '{name}': {exc}")
+                return
+            steps.extend(motion.steps)
+
+        if not steps:
+            self._show_status("The chosen action groups have no steps")
+            return
+
+        combined = Motion(name=UNTITLED, steps=tuple(steps))
+        self._session.load_as_new(combined)
+        self._refresh_all()
+        self._show_status(
+            f"Integrated {len(ordered)} groups into {len(steps)} steps — "
+            "Save as... to keep it"
+        )
+
+    def _on_delete_file(self) -> None:
+        """Delete the selected saved .d6a file from the folder."""
+        name = self._motion_combo.currentText().strip()
+        if not name:
+            self._show_status("No action group selected to delete")
+            return
+
+        deleting_open_buffer = self._session.motion.name == name
+        extra = ""
+        if deleting_open_buffer and self._session.dirty:
+            extra = "\nThe editor has unsaved changes to it that will be lost."
+
+        confirm = QMessageBox.question(
+            self,
+            "Delete file",
+            f"Delete '{name}.d6a' from\n{self._bridge.library_dir()} ?\n"
+            f"This cannot be undone.{extra}",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        try:
+            self._bridge.delete_motion.execute(name)
+        except Exception as exc:  # noqa: BLE001 - surface IO/domain errors alike
+            self._show_status(f"Delete failed: {exc}")
+            return
+        # If the deleted file is the one open in the editor, start fresh.
+        if deleting_open_buffer:
+            self._session.new()
+        self._refresh_all()
+        self._show_status(f"Deleted '{name}.d6a'")
+
     def _on_open(self) -> None:
         if not self._confirm_discard():
             return
@@ -391,7 +621,7 @@ class EditorWindow(QMainWindow):
             return
         try:
             motion = self._bridge.load_motion.execute(name)
-        except ArmMotionError as exc:
+        except Exception as exc:  # noqa: BLE001 - IO/SQLite must not crash the UI
             self._show_status(f"Open failed: {exc}")
             return
         self._session.open(motion)
@@ -437,16 +667,45 @@ class EditorWindow(QMainWindow):
                 stored = self._bridge.save_motion.execute(
                     self._session.motion, overwrite=True
                 )
-            except ArmMotionError as exc:
+            except Exception as exc:  # noqa: BLE001
                 self._show_status(f"Save failed: {exc}")
                 return
         except ArmMotionError as exc:
+            self._show_status(f"Save failed: {exc}")
+            return
+        except Exception as exc:  # noqa: BLE001 - IO/SQLite must not crash the UI
             self._show_status(f"Save failed: {exc}")
             return
 
         self._session.mark_saved(stored)
         self._refresh_library()
         self._show_status(f"Saved {self._bridge.repository.path_for(stored.name)}")
+
+    def _on_update_file(self) -> None:
+        """Overwrite the file currently open, without re-asking for a name.
+
+        Falls back to "Save as..." when the buffer is a brand-new file that has
+        never been saved (there is nothing to overwrite yet).
+        """
+        if not len(self._session.motion):
+            self._show_status("Nothing to update — the action group has no steps")
+            return
+        if self._session.is_new_file():
+            # No existing file behind this buffer yet.
+            self._on_save()
+            return
+
+        try:
+            stored = self._bridge.save_motion.execute(
+                self._session.motion, overwrite=True
+            )
+        except Exception as exc:  # noqa: BLE001 - IO/SQLite must not crash the UI
+            self._show_status(f"Update failed: {exc}")
+            return
+
+        self._session.mark_saved(stored)
+        self._refresh_library()
+        self._show_status(f"Updated {self._bridge.repository.path_for(stored.name)}")
 
     def _confirm_discard(self) -> bool:
         if not self._session.dirty:
@@ -511,7 +770,11 @@ class EditorWindow(QMainWindow):
             self._delete_all_button,
             self._open_button,
             self._save_button,
+            self._update_file_button,
+            self._delete_file_button,
             self._new_button,
+            self._change_folder_button,
+            self._integrate_button,
         ):
             button.setEnabled(not playing)
 
@@ -537,6 +800,9 @@ class EditorWindow(QMainWindow):
             for name, slider in self._sliders.items():
                 if name in pulses:
                     slider.setValue(pulses[name])
+            for name, spin in self._pulse_spins.items():
+                if name in pulses:
+                    spin.setValue(pulses[name])
         finally:
             self._updating_ui = False
         self._refresh_value_labels()
@@ -587,6 +853,8 @@ class EditorWindow(QMainWindow):
         elif self._session.motion.name in names:
             self._motion_combo.setCurrentText(self._session.motion.name)
         self._motion_combo.blockSignals(False)
+        self._folder_label.setText(str(self._bridge.library_dir()))
+        self._delete_file_button.setEnabled(bool(names))
         self._refresh_table()
 
     def _show_status(self, message: str) -> None:

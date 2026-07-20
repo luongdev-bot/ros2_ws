@@ -6,6 +6,17 @@
 #
 # Tune per joint if a servo is mounted mirrored (invert: true) or has a
 # narrower usable range (min_rad / max_rad).
+#
+# joint2/joint3/joint4 are inverted: a pulse increase drives these three
+# joints in the NEGATIVE URDF direction. Verified against the action groups
+# recorded on the real robot - with invert:false every taught "init" pose
+# (init, startup_init, navigation_pick_init, line_follow_init,
+# garbage_pick_init) aimed the wrist camera behind the robot (x = -0.2 m);
+# with invert:true they all aim forward-down at the workspace
+# (x = +0.26 .. +0.45 m), which is where they were taught to look.
+#
+# joint1, joint5 and r_joint are left un-inverted - no evidence either way
+# was available, so they were not changed speculatively.
 
 joints:
   - name: joint1          # base rotation
@@ -32,7 +43,7 @@ joints:
     max_pulse: 1000
     min_rad: -2.0943951
     max_rad: 2.0943951
-    invert: false
+    invert: true
 
   - name: joint3          # elbow
     servo_id: 3
@@ -45,7 +56,7 @@ joints:
     max_pulse: 1000
     min_rad: -2.0943951
     max_rad: 2.0943951
-    invert: false
+    invert: true
 
   - name: joint4          # wrist pitch
     servo_id: 4
@@ -58,7 +69,7 @@ joints:
     max_pulse: 1000
     min_rad: -2.0943951
     max_rad: 2.0943951
-    invert: false
+    invert: true
 
   - name: joint5          # wrist roll
     servo_id: 5

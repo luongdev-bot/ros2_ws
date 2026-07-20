@@ -204,6 +204,23 @@ class TestMotion:
         with pytest.raises(InvalidMotionError):
             motion.rescaled(50)
 
+    def test_rescale_rejects_budget_above_ceiling(self):
+        from arm_motion.domain.motion import MAX_STEP_DURATION_MS
+        motion = Motion('m', [self._step(1000), self._step(1000)])
+        with pytest.raises(InvalidMotionError, match='cannot exceed'):
+            motion.rescaled(MAX_STEP_DURATION_MS * 2 + 1)
+
+    def test_rescale_keeps_every_step_within_bounds(self):
+        from arm_motion.domain.motion import (
+            MAX_STEP_DURATION_MS,
+            MIN_STEP_DURATION_MS,
+        )
+        motion = Motion('m', [self._step(20), self._step(590000), self._step(20)])
+        rescaled = motion.rescaled(MAX_STEP_DURATION_MS * 3)
+        assert rescaled.total_duration_ms == MAX_STEP_DURATION_MS * 3
+        for s in rescaled.steps:
+            assert MIN_STEP_DURATION_MS <= s.duration_ms <= MAX_STEP_DURATION_MS
+
     def test_editing_helpers(self):
         motion = Motion('m', [self._step(angle=0.1), self._step(angle=0.2)])
 
@@ -227,3 +244,40 @@ class TestMotion:
         for bad in ('', 'has space', 'a/b', '..'):
             with pytest.raises(InvalidMotionError):
                 validate_motion_name(bad)
+
+
+class TestPrependedWith:
+    def _step(self, angle, duration=500):
+        return MotionStep(Pose({'joint1': angle, 'r_joint': 0.0}), duration)
+
+    def test_other_steps_come_first(self):
+        base = Motion('m', [self._step(0.5), self._step(0.9)])
+        prefix = Motion('home', [self._step(0.0)])
+
+        combined = base.prepended_with(prefix)
+
+        assert len(combined) == 3
+        assert combined.steps[0].pose['joint1'] == 0.0
+        assert combined.steps[1].pose['joint1'] == 0.5
+
+    def test_name_is_kept_from_the_receiver(self):
+        base = Motion('pick', [self._step(0.5)])
+        combined = base.prepended_with(Motion('home', [self._step(0.0)]))
+        assert combined.name == 'pick'
+
+    def test_durations_are_preserved(self):
+        base = Motion('m', [self._step(0.5, 400)])
+        prefix = Motion('home', [self._step(0.0, 1500)])
+
+        combined = base.prepended_with(prefix)
+
+        assert [s.duration_ms for s in combined.steps] == [1500, 400]
+
+    def test_neither_input_is_mutated(self):
+        base = Motion('m', [self._step(0.5)])
+        prefix = Motion('home', [self._step(0.0)])
+
+        base.prepended_with(prefix)
+
+        assert len(base) == 1
+        assert len(prefix) == 1

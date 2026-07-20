@@ -28,6 +28,11 @@ def generate_launch_description():
         default_value=os.path.join(os.path.expanduser('~'), 'ActionGroups'),
         description='Directory holding the .d6a action group files.',
     )
+    prelude_motion = DeclareLaunchArgument(
+        'prelude_motion',
+        default_value='home',
+        description="Action group the arm passes through before every motion; '' disables.",
+    )
     use_sim_time = DeclareLaunchArgument(
         'use_sim_time',
         default_value='true',
@@ -48,6 +53,7 @@ def generate_launch_description():
             'robot_config': LaunchConfiguration('robot_config'),
             'task_config': LaunchConfiguration('task_config'),
             'library_dir': LaunchConfiguration('library_dir'),
+            'prelude_motion': LaunchConfiguration('prelude_motion'),
             'use_sim_time': LaunchConfiguration('use_sim_time'),
         }],
     )
@@ -68,6 +74,7 @@ def generate_launch_description():
         robot_config,
         task_config,
         library_dir,
+        prelude_motion,
         use_sim_time,
         open_editor,
         server,

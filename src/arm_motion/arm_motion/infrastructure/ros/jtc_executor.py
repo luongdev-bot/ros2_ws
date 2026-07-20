@@ -322,7 +322,7 @@ class JtcTrajectoryExecutor(TrajectoryExecutor):
             if time.monotonic() > deadline:
                 raise MotionExecutionError(f"timed out waiting for {what}")
             time.sleep(POLL_INTERVAL_S)
-        return future.result()
+        return _result_or_error(future, what)
 
     def _await_all(
         self,
@@ -336,6 +336,7 @@ class JtcTrajectoryExecutor(TrajectoryExecutor):
         step_count = len(motion)
         started = time.monotonic()
         reported = -1
+        checked = set()
 
         while True:
             if cancelled():
@@ -352,12 +353,17 @@ class JtcTrajectoryExecutor(TrajectoryExecutor):
                     reported = index
                     on_progress(index, step_count)
 
-            if all(f.done() for f in result_futures.values()):
+            # Check each group's result the moment it finishes. If one aborts,
+            # _check_result raises immediately and _run's finally cancels the
+            # groups still moving — the arm and gripper must not diverge.
+            for group, future in result_futures.items():
+                if group not in checked and future.done():
+                    checked.add(group)
+                    self._check_result(group, _result_or_error(future, group))
+
+            if len(checked) == len(result_futures):
                 break
             time.sleep(POLL_INTERVAL_S)
-
-        for group, future in result_futures.items():
-            self._check_result(group, future.result())
 
         if on_progress is not None and reported != step_count:
             on_progress(step_count, step_count)
@@ -380,6 +386,16 @@ class JtcTrajectoryExecutor(TrajectoryExecutor):
             raise MotionExecutionError(
                 f"{self._namespaces[group]} finished with status {status}"
             )
+
+
+def _result_or_error(future, what):
+    """Read a resolved future, turning any stored exception into a domain error."""
+    try:
+        return future.result()
+    except MotionCancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - normalise transport/rclpy errors
+        raise MotionExecutionError(f"{what} failed: {exc}") from exc
 
 
 def _duration_from_ms(milliseconds: int) -> DurationMsg:

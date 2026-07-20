@@ -182,6 +182,16 @@ class EditSession:
             self.step_duration_ms = motion.steps[0].duration_ms
         self.dirty = False
 
+    def load_as_new(self, motion: Motion) -> None:
+        """Load a motion as a fresh, unsaved buffer (no file behind it yet).
+
+        Used by "Integrate": the combined motion must be saved under a new
+        name, never overwrite an existing file.
+        """
+        self.open(motion)
+        self._origin_name = None
+        self.dirty = True
+
     def mark_saved(self, motion: Motion) -> None:
         self.motion = motion
         self._origin_name = motion.name

@@ -268,6 +268,12 @@ class D6aMotionRepository(MotionRepository):
 
         servo_columns = [c for c in column_names if c.lower().startswith("servo")]
         joint_for_column = self._map_columns_to_joints(servo_columns, info)
+        if not joint_for_column:
+            # No Servo column maps to a joint of this profile: the file is not
+            # for this robot. Reject it rather than fabricating a home pose.
+            raise InvalidMotionError(
+                "action group has no servo columns matching this robot profile"
+            )
 
         time_index = self._column_index(column_names, "Time")
         if time_index is None:
@@ -299,31 +305,39 @@ class D6aMotionRepository(MotionRepository):
     ) -> Dict[str, str]:
         """Decide which joint each ``ServoN`` column drives.
 
-        Prefers the joint names recorded in ``MotionInfo``; falls back to the
-        recorded bus ids; finally falls back to positional order, which is how
-        a file written by the original editor must be interpreted.
+        Keyed on the column's own number ``N`` (``Servo3`` -> the 3rd slot),
+        never on a compacted enumeration, so a file missing an intermediate
+        column (e.g. no ``Servo2``) does not shift later columns onto the wrong
+        joint. Prefers the joint names recorded in ``MotionInfo``; falls back
+        to the recorded bus ids; finally falls back to the profile's own order,
+        which is how a file written by the original editor is interpreted.
         """
         stored_joints = self._json_list(info.get("joint_names"))
         stored_ids = self._json_list(info.get("servo_ids"))
         profile_joints = [j.name for j in self._profile.joints]
 
         mapping: Dict[str, str] = {}
-        for position, column in enumerate(sorted(servo_columns, key=_servo_sort_key)):
+        for column in servo_columns:
+            slot = _servo_sort_key(column) - 1  # Servo1 -> slot 0
+            if slot < 0:
+                continue
             joint: Optional[str] = None
 
-            if position < len(stored_joints):
-                candidate = str(stored_joints[position])
+            if slot < len(stored_joints):
+                candidate = str(stored_joints[slot])
                 if candidate in profile_joints:
                     joint = candidate
 
-            if joint is None and position < len(stored_ids):
+            if joint is None and slot < len(stored_ids):
                 try:
-                    joint = self._profile.joint_by_servo_id(int(stored_ids[position])).name
+                    joint = self._profile.joint_by_servo_id(
+                        int(stored_ids[slot])
+                    ).name
                 except Exception:
                     joint = None
 
-            if joint is None and position < len(profile_joints):
-                joint = profile_joints[position]
+            if joint is None and slot < len(profile_joints):
+                joint = profile_joints[slot]
 
             if joint is not None:
                 mapping[column] = joint

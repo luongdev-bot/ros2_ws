@@ -101,16 +101,21 @@ class Motion:
                 f"motion '{self.name}' has {len(self.steps)} steps and so "
                 f"needs at least {floor_total} ms, not {total_duration_ms} ms"
             )
+        ceiling_total = MAX_STEP_DURATION_MS * len(self.steps)
+        if total_duration_ms > ceiling_total:
+            raise InvalidMotionError(
+                f"motion '{self.name}' has {len(self.steps)} steps and so "
+                f"cannot exceed {ceiling_total} ms, not {total_duration_ms} ms"
+            )
 
         original_total = self.total_duration_ms
         if original_total <= 0:
             # Degenerate but recoverable: spread the budget evenly.
             share = total_duration_ms // len(self.steps)
-            raw = [share] * len(self.steps)
+            raw = [_clamp_step(share)] * len(self.steps)
         else:
             factor = total_duration_ms / original_total
-            raw = [max(MIN_STEP_DURATION_MS, round(s.duration_ms * factor))
-                   for s in self.steps]
+            raw = [_clamp_step(round(s.duration_ms * factor)) for s in self.steps]
 
         raw = _absorb_rounding_error(raw, total_duration_ms)
         rescaled_steps = tuple(
@@ -155,6 +160,14 @@ class Motion:
         steps[current], steps[target] = steps[target], steps[current]
         return self._replacing(steps), target
 
+    def prepended_with(self, other: "Motion") -> "Motion":
+        """Return this motion with ``other``'s steps run first.
+
+        Used to make every motion pass through a safety pose. The result
+        keeps this motion's name and metadata - only the step list grows.
+        """
+        return self._replacing(list(other.steps) + list(self.steps))
+
     def renamed(self, name: str) -> "Motion":
         return Motion(name, self.steps, self.description, self.updated_at)
 
@@ -172,27 +185,39 @@ def _bounded_insert_index(index: int, length: int) -> int:
     return min(max(index, 0), length)
 
 
+def _clamp_step(duration: int) -> int:
+    """Keep a single step within the per-step [min, max] bounds."""
+    return min(max(int(duration), MIN_STEP_DURATION_MS), MAX_STEP_DURATION_MS)
+
+
 def _absorb_rounding_error(durations: List[int], target_total: int) -> List[int]:
     """Nudge durations so they sum to exactly ``target_total``.
 
     Rounding each step independently leaves a few ms of drift; push the
-    remainder onto the longest steps, which can absorb it without falling
-    below the per-step minimum.
+    remainder onto the steps that have room, respecting both the per-step
+    minimum and maximum. The caller guarantees the target fits within
+    ``[min*n, max*n]``, so a feasible distribution always exists.
     """
     drift = target_total - sum(durations)
     if drift == 0:
         return durations
 
-    order = sorted(range(len(durations)), key=lambda i: durations[i], reverse=True)
-    step = 1 if drift > 0 else -1
+    positive = drift > 0
+    # For extra time, fill the smallest steps first; for less, drain the
+    # largest — this keeps proportions as close as possible.
+    order = sorted(
+        range(len(durations)), key=lambda i: durations[i], reverse=not positive
+    )
+    step = 1 if positive else -1
     cursor = 0
-    # Bound the loop: every pass can move at most len(durations) ms.
     guard = abs(drift) * len(durations) + len(durations)
     while drift != 0 and guard > 0:
         guard -= 1
         i = order[cursor % len(order)]
         cursor += 1
-        if step < 0 and durations[i] <= MIN_STEP_DURATION_MS:
+        if positive and durations[i] >= MAX_STEP_DURATION_MS:
+            continue
+        if not positive and durations[i] <= MIN_STEP_DURATION_MS:
             continue
         durations[i] += step
         drift -= step

@@ -6,7 +6,12 @@
 set -euo pipefail
 
 WORKSPACE="${1:-${ARM_MOTION_WS:-$HOME/ros2_ws}}"
-LAUNCHER="${WORKSPACE}/src/arm_motion/scripts/arm_motion_editor.sh"
+# Prefer the workspace launcher (opens Gazebo + editor in their own terminals,
+# matching run_joystick.sh); fall back to the packaged wrapper.
+LAUNCHER="${WORKSPACE}/scripts/run_arm_editor.sh"
+if [[ ! -f "${LAUNCHER}" ]]; then
+  LAUNCHER="${WORKSPACE}/src/arm_motion/scripts/arm_motion_editor.sh"
+fi
 
 if [[ ! -f "${LAUNCHER}" ]]; then
   echo "Launcher not found: ${LAUNCHER}" >&2
@@ -34,7 +39,6 @@ Name=Arm Action Editor
 Comment=Teach and replay robot arm action groups on Gazebo
 Exec=${LAUNCHER}
 Path=${WORKSPACE}
-Icon=applications-engineering
 Terminal=false
 Categories=Development;Robotics;
 DESKTOP

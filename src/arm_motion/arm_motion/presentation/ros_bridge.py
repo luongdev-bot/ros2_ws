@@ -126,6 +126,16 @@ class EditorRosBridge:
     def library_dir(self) -> Path:
         return self.repository.directory
 
+    def set_library_dir(self, directory) -> Path:
+        """Point the library at a different folder and rebind the use cases."""
+        repository = D6aMotionRepository(directory, self.profile)
+        self.repository = repository
+        self.save_motion = SaveMotionUseCase(repository)
+        self.load_motion = LoadMotionUseCase(repository)
+        self.list_motions = ListMotionsUseCase(repository)
+        self.delete_motion = DeleteMotionUseCase(repository)
+        return repository.directory
+
     def shutdown(self) -> None:
         if not self._running:
             return

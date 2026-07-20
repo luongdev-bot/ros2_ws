@@ -198,6 +198,24 @@ class TestPartialAcceptance:
         with pytest.raises(MotionExecutionError, match='not available'):
             executor.execute(make_motion(profile))
 
+    def test_early_failure_aborts_the_still_running_group(self, executor, profile):
+        """One group failing quickly must cancel the other before it finishes."""
+        quick_fail = FakeHandle(
+            duration_s=0.05, result=FakeResult(status=STATUS_ABORTED, error_code=-1)
+        )
+        long_running = FakeHandle(duration_s=10.0)
+        executor.fakes['/arm_ctl'].handle = quick_fail
+        executor.fakes['/grip_ctl'].handle = long_running
+
+        start = time.time()
+        with pytest.raises(MotionExecutionError):
+            executor.execute(make_motion(profile, duration_ms=10000))
+        elapsed = time.time() - start
+
+        # We must not have waited for the 10 s group to finish on its own.
+        assert elapsed < 2.0, f'did not abort early (waited {elapsed:.1f}s)'
+        assert long_running.cancelled
+
 
 class TestCancellation:
 

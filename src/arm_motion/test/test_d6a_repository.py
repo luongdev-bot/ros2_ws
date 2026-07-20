@@ -208,6 +208,51 @@ class TestLibraryOperations:
 
         assert [m.name for m in repository.list()] == ['inside']
 
+    def test_rejects_file_with_no_matching_servo_columns(
+        self, repository, tmp_path
+    ):
+        """A file whose columns map to no profile joint must be rejected."""
+        path = tmp_path / 'foreign.d6a'
+        conn = sqlite3.connect(str(path))
+        try:
+            with conn:
+                conn.execute(
+                    'CREATE TABLE ActionGroup ('
+                    '[Index] INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, '
+                    'Time INT, Widget1 INT, Widget2 INT)'
+                )
+                conn.execute('INSERT INTO ActionGroup VALUES (1, 1000, 5, 6)')
+        finally:
+            conn.close()
+        with pytest.raises(InvalidMotionError):
+            repository.load('foreign')
+
+    def test_sparse_servo_columns_map_by_number_not_position(
+        self, repository, profile, tmp_path
+    ):
+        """A file missing Servo2 must not shift Servo3.. onto the wrong joint."""
+        path = tmp_path / 'sparse.d6a'
+        conn = sqlite3.connect(str(path))
+        try:
+            with conn:
+                # Servo2 deliberately absent; Servo6 present.
+                conn.execute(
+                    'CREATE TABLE ActionGroup ('
+                    '[Index] INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, '
+                    'Time INT, Servo1 INT, Servo3 INT, Servo6 INT)'
+                )
+                # Servo1->joint1=650, Servo3->joint3=215, Servo6->r_joint(closed)
+                conn.execute('INSERT INTO ActionGroup VALUES (1, 1000, 650, 215, 596)')
+        finally:
+            conn.close()
+
+        loaded = repository.load('sparse')
+        pulses = profile.pulses_from_pose(loaded.steps[0].pose)
+        assert pulses['joint1'] == 650
+        assert pulses['joint3'] == 215      # NOT shifted onto joint2
+        # joint2 was absent -> filled from home, not from Servo3's value.
+        assert pulses['joint2'] != 215
+
     def test_failed_save_leaves_no_temp_files(self, repository, profile):
         bad_pose = Pose({j.name: 0.0 for j in profile.joints} | {'joint1': 99.0})
         with pytest.raises(InvalidMotionError):
