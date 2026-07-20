@@ -6,14 +6,21 @@
 # -> depth_cam_link -> depth_cam_frame). With all joints at 0 the camera points
 # straight UP (viewing direction 0,0,1), which makes RTAB-Map useless.
 #
-# Pose below was picked by forward kinematics on the URDF:
-#   joint2=0.80 joint3=0.00 joint4=0.80
-#     -> camera at (0.277, 0.000, 0.456) in base_footprint
-#     -> viewing direction (1.00, 0.00, -0.03): forward, 1.7 deg down
-#     -> lowest arm link z = 0.227 m, safely above the lidar plane (0.157 m)
+# The pose below is no longer hand-picked: it is Hiwonder's taught `horizontal`
+# action group (~/ActionGroups/horizontal.d6a, servo pulses 470 662 225 219
+# 500 596) converted to URDF radians through arm_motion/config/jetrover_arm.yaml.
+# Forward kinematics on the URDF confirms it:
+#   -> camera at (0.071, 0.006, 0.489) in base_footprint
+#   -> viewing direction (0.989, 0.125, -0.080): forward, 4.6 deg down
+#   -> lowest arm link z = 0.227 m, safely above the lidar plane (0.157 m)
+# Keep these numbers in sync with
+# jetrover_moveit_config/config/slam_initial_positions.yaml, which boots the
+# sim at the same pose - this script is now only the fallback for the case
+# where gz_ros2_control does not honour the initial positions.
 #
 # Requires the arm controller, i.e. the sim must be started with
-# gazebo_moveit.launch.py (gz_ros2_control + arm_controller), not gazebo.launch.py.
+# gazebo_arm.launch.py or gazebo_moveit.launch.py (gz_ros2_control +
+# arm_controller), not gazebo.launch.py.
 set -u
 
 echo "Waiting for arm_controller to become active ..."
@@ -39,7 +46,7 @@ echo "Moving the arm to the camera-forward pose ..."
 out=$(timeout 30 ros2 action send_goal /arm_controller/follow_joint_trajectory \
   control_msgs/action/FollowJointTrajectory \
 "{trajectory: {joint_names: ['joint1','joint2','joint3','joint4','joint5'],
-   points: [{positions: [0.0, 0.80, 0.0, 0.80, 0.0], time_from_start: {sec: 3, nanosec: 0}}]}}" 2>&1)
+   points: [{positions: [-0.1257, -0.6786, 1.1519, 1.1771, 0.0], time_from_start: {sec: 3, nanosec: 0}}]}}" 2>&1)
 rc=$?
 
 if [ $rc -eq 124 ]; then

@@ -17,23 +17,35 @@ WS="$HOME/ros2_ws"
 ENV_SETUP="source /opt/ros/humble/setup.bash; source '$WS/install/setup.bash'; export MACHINE_TYPE=JetRover_Mecanum; export LIDAR_TYPE=A1"
 WAIT_SIM="echo 'Waiting for the simulation (/scan)...'; until ros2 topic list 2>/dev/null | grep -qx /scan; do sleep 1; done; sleep 2"
 
-# 2D only needs the laser, so the plain sim is enough.
-# 3D needs the depth camera, which is mounted on the ARM, so it needs:
-#   - gazebo_moveit.launch.py: gz_ros2_control + arm_controller, and the static
-#     TF depth_cam_frame -> jetrover/link4/depth_camera that RTAB-Map requires
-#   - pose_arm_camera.sh: extends the arm so the camera looks forward
-#     (at joint 0 the camera points straight up and RTAB-Map gets nothing)
-# PREP is chained with && on purpose: if pose_arm_camera.sh fails the
-# camera is still pointing up and RTAB-Map would map nothing, so SLAM must
-# NOT start.
+# BOTH modes use gazebo_arm.launch.py, not the lighter gazebo.launch.py.
+# gazebo.launch.py has no gz_ros2_control and no arm_controller, so nothing
+# actuates or holds the five revolute arm joints: the arm collapses under
+# gravity, and because /joint_states is bridged straight out of Gazebo, RViz
+# faithfully renders the collapsed arm. 2D SLAM does not use the camera, but
+# it still wants a robot that looks like the robot.
+#
+# The arm boots at the "horizontal" pose (slam_initial_positions.yaml, from
+# ~/ActionGroups/horizontal.d6a) rather than the package default pick_init:
+# pick_init swings joint1 90 deg and aims the depth camera down-right, so 3D
+# SLAM mapped the floor beside the robot. Horizontal aims it forward and keeps
+# every arm link above the lidar plane, so it is right for 2D as well.
+#
+# 3D additionally needs the depth camera, hence pose_arm_camera.sh - now only
+# insurance in case gz_ros2_control ignores the initial positions. PREP is
+# chained with && on purpose: if it fails the camera may be misaimed and
+# RTAB-Map would map nothing, so SLAM must NOT start.
 # use_gpu:=true -> CUDA ORB/FAST (source rtabmap built against CUDA OpenCV 4.10).
+#
+# Single-quoted so the substitution runs inside the spawned terminal, i.e.
+# AFTER install/setup.bash has been sourced.
+SLAM_ARM_POSE='$(ros2 pkg prefix jetrover_moveit_config)/share/jetrover_moveit_config/config/slam_initial_positions.yaml'
+SIM_LAUNCH="ros2 launch jetrover_gazebo gazebo_arm.launch.py initial_positions_file:=$SLAM_ARM_POSE"
+
 case "$MODE" in
-  2d) SIM_LAUNCH="ros2 launch jetrover_gazebo gazebo.launch.py"
-      SLAM_LAUNCH="ros2 launch slam slam.launch.py"
+  2d) SLAM_LAUNCH="ros2 launch slam slam.launch.py"
       SLAM_TITLE="SLAM 2D (slam_toolbox)"
       PREP="" ;;
-  3d) SIM_LAUNCH="ros2 launch jetrover_gazebo gazebo_arm.launch.py"
-      SLAM_LAUNCH="ros2 launch slam rtabmap_slam.launch.py use_gpu:=true"
+  3d) SLAM_LAUNCH="ros2 launch slam rtabmap_slam.launch.py use_gpu:=true"
       SLAM_TITLE="SLAM 3D (RTAB-Map, CUDA)"
       PREP="bash $WS/scripts/pose_arm_camera.sh &&" ;;
   *)  echo "Usage: $0 [2d|3d]"; exit 1 ;;
