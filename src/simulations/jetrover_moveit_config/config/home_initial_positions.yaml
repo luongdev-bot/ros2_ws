@@ -1,0 +1,28 @@
+# Initial arm positions for driving: 2D SLAM and Nav2.
+#
+# This is the taught "home" pose from ~/ActionGroups/home.d6a
+# (servo pulses 500, 500, 338, 159, 500, 596, described there as
+# "folded pose for driving"), converted to URDF radians through
+# arm_motion/config/jetrover_arm.yaml - same conversion as
+# slam_initial_positions.yaml, and joint2/joint3/joint4 are inverted there.
+#
+# Forward kinematics on jetrover_sim.xacro at this pose:
+#   lowest arm link z = 0.193 m (link1), above the lidar plane (0.157 m),
+#     so the folded arm never occludes /scan
+#   depth_cam_frame at (0.188, 0.000, 0.468) in base_footprint
+#     viewing direction (0.860, 0.000, -0.511) -> forward, 30.7 deg down
+#
+# Why this file is for 2D and NOT 3D: 2D SLAM and Nav2 use the lidar only,
+# so all that matters is that the arm stays out of the scan plane - and the
+# folded pose is also the compact, stable shape you want while driving.
+# 3D SLAM does use the depth camera, and 30.7 deg down aims it at the floor
+# roughly a metre ahead instead of at the room; slam_initial_positions.yaml
+# (the "horizontal" pose, 4.6 deg down) exists for that case. Keep them apart.
+
+initial_positions:
+  joint1: 0.0
+  joint2: 0.0
+  joint3: 0.6786
+  joint4: 1.4284
+  joint5: 0.0
+  r_joint: 0.3014

@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Mapping, Sequence
 
 from .detection import BlockDetection
+from .motion_step import MotionStep
 
 
 class BlockDetector(ABC):
@@ -42,13 +43,32 @@ class MotionPlayer(ABC):
     def is_busy(self) -> bool:
         """Whether a motion is currently executing."""
 
+    @abstractmethod
+    def cancel(self) -> None:
+        """Best-effort abort of the running motion, if any.
+
+        Used by the watchdog to stop the arm when a motion overruns; safe
+        to call when nothing is running.
+        """
+
 
 class ColorMotionMap(ABC):
-    """Which action group to play for a detected colour."""
+    """Which action group(s) to play for a detected colour."""
+
+    @abstractmethod
+    def steps_for(self, color: str) -> Sequence[MotionStep]:
+        """Ordered action groups to play for ``color`` (e.g. pick then place).
+
+        Always at least one step. Played in order, each starting only once
+        the previous one has succeeded.
+
+        Raises:
+            UnknownColorError: if the colour has no mapping.
+        """
 
     @abstractmethod
     def motion_for(self, color: str) -> str:
-        """Motion name bound to ``color``.
+        """Name of the first (pick) step bound to ``color``.
 
         Raises:
             UnknownColorError: if the colour has no mapping.
@@ -56,8 +76,8 @@ class ColorMotionMap(ABC):
 
     @abstractmethod
     def duration_for(self, color: str) -> int:
-        """Playback budget in ms; 0 keeps the timings stored in the .d6a."""
+        """Playback budget of the first step in ms; 0 keeps the .d6a timings."""
 
     @abstractmethod
     def as_dict(self) -> Mapping[str, str]:
-        """The whole colour -> motion mapping, for logging on startup."""
+        """The whole colour -> first-motion mapping, for logging on startup."""

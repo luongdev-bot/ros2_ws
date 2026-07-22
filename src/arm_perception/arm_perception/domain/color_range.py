@@ -12,7 +12,7 @@ OpenCV packs LAB into three uint8 channels:
 """
 
 from dataclasses import dataclass
-from typing import Dict, Iterator, Mapping, Tuple
+from typing import Dict, Iterator, Mapping, Optional, Tuple
 
 from .errors import InvalidColorRangeError
 
@@ -35,6 +35,9 @@ class ColorRange:
     lab_min: LabTriple
     lab_max: LabTriple
     min_area_px: int = 200
+    #: Upper bound, to reject same-coloured surfaces larger than a block
+    #: (sorting bins, trays, a painted wall). None = no upper bound.
+    max_area_px: Optional[int] = None
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -61,6 +64,24 @@ class ColorRange:
             raise InvalidColorRangeError(
                 f"{self.name}.min_area_px must not be negative, got {self.min_area_px}"
             )
+
+        if self.max_area_px is not None:
+            if self.max_area_px <= 0:
+                raise InvalidColorRangeError(
+                    f"{self.name}.max_area_px must be positive, "
+                    f"got {self.max_area_px}"
+                )
+            if self.max_area_px <= self.min_area_px:
+                raise InvalidColorRangeError(
+                    f"{self.name}: max_area_px ({self.max_area_px}) must exceed "
+                    f"min_area_px ({self.min_area_px})"
+                )
+
+    def accepts_area(self, area_px: float) -> bool:
+        """Whether a blob of this size could plausibly be the object."""
+        if self.max_area_px is None:
+            return True
+        return area_px <= self.max_area_px
 
     def contains(self, lab: LabTriple) -> bool:
         """Whether a single LAB sample falls inside this box.

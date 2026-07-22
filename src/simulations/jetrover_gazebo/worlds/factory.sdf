@@ -1,0 +1,307 @@
+<?xml version="1.0" ?>
+<!--
+  GENERATED FILE - do not edit by hand.
+  Source of truth: tools/generate_worlds.py (edit the layout there, re-run it).
+
+  Open production hall with racking aisles and machine bays - wide free space broken by regular tall obstacles.
+-->
+<sdf version="1.9">
+  <world name="factory">
+
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <plugin filename="ignition-gazebo-physics-system" name="ignition::gazebo::systems::Physics"/>
+    <plugin filename="ignition-gazebo-user-commands-system" name="ignition::gazebo::systems::UserCommands"/>
+    <plugin filename="ignition-gazebo-scene-broadcaster-system" name="ignition::gazebo::systems::SceneBroadcaster"/>
+    <plugin filename="ignition-gazebo-sensors-system" name="ignition::gazebo::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="ignition-gazebo-imu-system" name="ignition::gazebo::systems::Imu"/>
+
+    <scene>
+      <ambient>0.6 0.6 0.6 1</ambient>
+      <background>0.7 0.75 0.8 1</background>
+      <shadows>true</shadows>
+    </scene>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>1 1 1 1</diffuse>
+      <specular>0.4 0.4 0.4 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane><normal>0 0 1</normal><size>60 60</size></plane>
+          </geometry>
+          <surface>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane><normal>0 0 1</normal><size>60 60</size></plane>
+          </geometry>
+          <material>
+            <ambient>0.75 0.75 0.72 1</ambient>
+            <diffuse>0.75 0.75 0.72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="walls">
+      <static>true</static>
+      <link name="wall_0">
+        <pose>0.0000 -7.0000 1.2500 0 0 0.000000</pose>
+        <collision name="collision">
+          <geometry><box><size>22.1500 0.15 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>22.1500 0.15 2.5</size></box></geometry>
+          <material>
+            <ambient>0.85 0.85 0.83 1</ambient>
+            <diffuse>0.85 0.85 0.83 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="wall_1">
+        <pose>11.0000 0.0000 1.2500 0 0 1.570796</pose>
+        <collision name="collision">
+          <geometry><box><size>14.1500 0.15 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>14.1500 0.15 2.5</size></box></geometry>
+          <material>
+            <ambient>0.85 0.85 0.83 1</ambient>
+            <diffuse>0.85 0.85 0.83 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="wall_2">
+        <pose>0.0000 7.0000 1.2500 0 0 3.141593</pose>
+        <collision name="collision">
+          <geometry><box><size>22.1500 0.15 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>22.1500 0.15 2.5</size></box></geometry>
+          <material>
+            <ambient>0.85 0.85 0.83 1</ambient>
+            <diffuse>0.85 0.85 0.83 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="wall_3">
+        <pose>-11.0000 0.0000 1.2500 0 0 -1.570796</pose>
+        <collision name="collision">
+          <geometry><box><size>14.1500 0.15 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>14.1500 0.15 2.5</size></box></geometry>
+          <material>
+            <ambient>0.85 0.85 0.83 1</ambient>
+            <diffuse>0.85 0.85 0.83 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="wall_4">
+        <pose>-8.0000 5.2500 1.2500 0 0 -1.570796</pose>
+        <collision name="collision">
+          <geometry><box><size>3.6500 0.15 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>3.6500 0.15 2.5</size></box></geometry>
+          <material>
+            <ambient>0.85 0.85 0.83 1</ambient>
+            <diffuse>0.85 0.85 0.83 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="wall_5">
+        <pose>-4.0000 5.2500 1.2500 0 0 -1.570796</pose>
+        <collision name="collision">
+          <geometry><box><size>3.6500 0.15 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>3.6500 0.15 2.5</size></box></geometry>
+          <material>
+            <ambient>0.85 0.85 0.83 1</ambient>
+            <diffuse>0.85 0.85 0.83 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="wall_6">
+        <pose>0.0000 5.2500 1.2500 0 0 -1.570796</pose>
+        <collision name="collision">
+          <geometry><box><size>3.6500 0.15 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>3.6500 0.15 2.5</size></box></geometry>
+          <material>
+            <ambient>0.85 0.85 0.83 1</ambient>
+            <diffuse>0.85 0.85 0.83 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="wall_7">
+        <pose>4.0000 5.2500 1.2500 0 0 -1.570796</pose>
+        <collision name="collision">
+          <geometry><box><size>3.6500 0.15 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>3.6500 0.15 2.5</size></box></geometry>
+          <material>
+            <ambient>0.85 0.85 0.83 1</ambient>
+            <diffuse>0.85 0.85 0.83 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="wall_8">
+        <pose>-9.5000 3.5000 1.2500 0 0 0.000000</pose>
+        <collision name="collision">
+          <geometry><box><size>3.1500 0.15 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>3.1500 0.15 2.5</size></box></geometry>
+          <material>
+            <ambient>0.85 0.85 0.83 1</ambient>
+            <diffuse>0.85 0.85 0.83 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="wall_9">
+        <pose>-6.0000 3.5000 1.2500 0 0 0.000000</pose>
+        <collision name="collision">
+          <geometry><box><size>4.1500 0.15 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4.1500 0.15 2.5</size></box></geometry>
+          <material>
+            <ambient>0.85 0.85 0.83 1</ambient>
+            <diffuse>0.85 0.85 0.83 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="wall_10">
+        <pose>-2.0000 3.5000 1.2500 0 0 0.000000</pose>
+        <collision name="collision">
+          <geometry><box><size>4.1500 0.15 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4.1500 0.15 2.5</size></box></geometry>
+          <material>
+            <ambient>0.85 0.85 0.83 1</ambient>
+            <diffuse>0.85 0.85 0.83 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="wall_11">
+        <pose>6.0000 -4.7500 1.2500 0 0 1.570796</pose>
+        <collision name="collision">
+          <geometry><box><size>4.6500 0.15 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4.6500 0.15 2.5</size></box></geometry>
+          <material>
+            <ambient>0.85 0.85 0.83 1</ambient>
+            <diffuse>0.85 0.85 0.83 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="wall_12">
+        <pose>8.5000 -2.5000 1.2500 0 0 0.000000</pose>
+        <collision name="collision">
+          <geometry><box><size>5.1500 0.15 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>5.1500 0.15 2.5</size></box></geometry>
+          <material>
+            <ambient>0.85 0.85 0.83 1</ambient>
+            <diffuse>0.85 0.85 0.83 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/aws_robomaker_warehouse_ShelfE_01</uri>
+      <name>aws_robomaker_warehouse_shelfe_01_1</name>
+      <pose>-6.000 -1.500 0 0 0 0.000000</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/aws_robomaker_warehouse_ShelfE_01</uri>
+      <name>aws_robomaker_warehouse_shelfe_01_2</name>
+      <pose>-6.000 -3.500 0 0 0 0.000000</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/aws_robomaker_warehouse_ShelfD_01</uri>
+      <name>aws_robomaker_warehouse_shelfd_01_1</name>
+      <pose>-1.000 -1.500 0 0 0 0.000000</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/aws_robomaker_warehouse_ShelfD_01</uri>
+      <name>aws_robomaker_warehouse_shelfd_01_2</name>
+      <pose>-1.000 -3.500 0 0 0 0.000000</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/aws_robomaker_warehouse_ShelfF_01</uri>
+      <name>aws_robomaker_warehouse_shelff_01_1</name>
+      <pose>3.000 -1.500 0 0 0 0.000000</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/SquareShelf</uri>
+      <name>squareshelf_1</name>
+      <pose>-9.500 1.000 0 0 0 0.000000</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/SquareShelf</uri>
+      <name>squareshelf_2</name>
+      <pose>-9.500 -1.000 0 0 0 0.000000</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Euro%20pallet</uri>
+      <name>euro_pallet_1</name>
+      <pose>-7.500 5.000 0 0 0 0.000000</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Euro%20pallet</uri>
+      <name>euro_pallet_2</name>
+      <pose>-3.000 5.000 0 0 0 0.300000</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Euro%20pallet</uri>
+      <name>euro_pallet_3</name>
+      <pose>1.500 5.200 0 0 0 0.000000</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Euro%20pallet</uri>
+      <name>euro_pallet_4</name>
+      <pose>8.000 2.000 0 0 0 0.000000</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/aws_robomaker_warehouse_PalletJackB_01</uri>
+      <name>aws_robomaker_warehouse_palletjackb_01_1</name>
+      <pose>8.500 -5.000 0 0 0 1.570796</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/aws_robomaker_warehouse_PalletJackB_01</uri>
+      <name>aws_robomaker_warehouse_palletjackb_01_2</name>
+      <pose>-9.000 -5.500 0 0 0 0.000000</pose>
+    </include>
+
+  </world>
+</sdf>

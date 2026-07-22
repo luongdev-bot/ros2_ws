@@ -28,12 +28,9 @@
       <material name="black"/>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="-0.01598 -0.01865 0.00080" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="package://jetrover_description/meshes/common/imu_link.stl" />
+        <box size="0.06295 0.09000 0.00160" />
       </geometry>
     </collision>
   </link>

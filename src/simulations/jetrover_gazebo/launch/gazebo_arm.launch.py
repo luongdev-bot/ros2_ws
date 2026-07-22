@@ -17,6 +17,7 @@ gazebo_moveit.launch.py when you actually want MoveIt.
 import os
 from ament_index_python.packages import get_package_share_directory, get_package_prefix
 
+
 from launch import LaunchDescription
 from launch.actions import (
     IncludeLaunchDescription,
@@ -29,6 +30,14 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, LaunchConfiguration
 from launch_ros.actions import Node, SetParameter
 from launch_ros.parameter_descriptions import ParameterValue
+
+# jetrover_sim.xacro reads MACHINE_TYPE and LIDAR_TYPE from the environment.
+# With them unset, xacro aborts ("environment variable 'LIDAR_TYPE' is not set")
+# and the launch dies before Gazebo starts. Default them here - set at import,
+# long before the lazy xacro Command actually runs - so the launch works from a
+# plain shell. setdefault, so an explicitly exported value still wins.
+os.environ.setdefault('MACHINE_TYPE', 'JetRover_Mecanum')
+os.environ.setdefault('LIDAR_TYPE', 'A1')
 
 
 def generate_launch_description():
@@ -65,6 +74,15 @@ def generate_launch_description():
     )
     robot_name_arg = DeclareLaunchArgument('robot_name', default_value='jetrover')
 
+    # Where to drop the robot. (0, 0) is clear in the JetRover worlds, but a
+    # downloaded world places its building wherever its author did - spawning at
+    # the origin can put the robot inside a shelf, or outside the building where
+    # the lidar sees nothing and SLAM maps an empty plane. The world catalogue
+    # (config/world_catalog.yaml) carries a per-world spawn point for that reason.
+    spawn_x_arg = DeclareLaunchArgument('spawn_x', default_value='0')
+    spawn_y_arg = DeclareLaunchArgument('spawn_y', default_value='0')
+    spawn_yaw_arg = DeclareLaunchArgument('spawn_yaw', default_value='0')
+
     # The pose the arm boots in is task-specific, so it is an argument rather
     # than a constant: arm_perception wants pick_init (the default below), the
     # SLAM sims want the horizontal pose that aims the depth camera forward
@@ -88,7 +106,13 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(get_package_share_directory('ros_gz_sim'), 'launch', 'gz_sim.launch.py')
         ),
-        launch_arguments={'gz_args': [LaunchConfiguration('world'), ' -r']}.items(),
+        launch_arguments={'gz_args': [
+            LaunchConfiguration('world'), ' -r',
+            # Stock Fortress GUI plus the VisualizeLidar plugin, so the
+            # laser fan is drawn in the Gazebo window itself.
+            ' --gui-config ', os.path.join(
+                jetrover_gazebo_share, 'config', 'gui.config'),
+        ]}.items(),
     )
 
     robot_state_publisher_node = Node(
@@ -108,7 +132,10 @@ def generate_launch_description():
         arguments=[
             '-topic', 'robot_description',
             '-name', LaunchConfiguration('robot_name'),
-            '-x', '0', '-y', '0', '-z', '0.05',
+            '-x', LaunchConfiguration('spawn_x'),
+            '-y', LaunchConfiguration('spawn_y'),
+            '-z', '0.05',
+            '-Y', LaunchConfiguration('spawn_yaw'),
         ],
     )
 
@@ -196,6 +223,9 @@ def generate_launch_description():
         SetParameter(name='use_sim_time', value=True),
         world_arg,
         robot_name_arg,
+        spawn_x_arg,
+        spawn_y_arg,
+        spawn_yaw_arg,
         initial_positions_arg,
         gz_sim,
         robot_state_publisher_node,

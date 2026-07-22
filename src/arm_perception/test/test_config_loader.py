@@ -133,8 +133,112 @@ def test_non_string_motion_is_rejected(tmp_path):
             load_color_pick_config(write(tmp_path, data))
 
 
+def test_place_is_parsed_as_a_second_step(tmp_path):
+    data = {"colors": {"red": dict(
+        GOOD["colors"]["red"], place="place_left", place_duration_ms=1500
+    )}}
+
+    _, motion_map = load_color_pick_config(write(tmp_path, data))
+
+    steps = list(motion_map.steps_for("red"))
+    assert [(s.name, s.duration_ms) for s in steps] == [
+        ("pick", 0), ("place_left", 1500),
+    ]
+
+
+def test_omitting_place_gives_a_pick_only_sequence(tmp_path):
+    _, motion_map = load_color_pick_config(write(tmp_path, GOOD))
+
+    assert [s.name for s in motion_map.steps_for("red")] == ["pick"]
+
+
+def test_empty_place_is_rejected(tmp_path):
+    data = {"colors": {"red": dict(GOOD["colors"]["red"], place="  ")}}
+
+    with pytest.raises(InvalidColorRangeError, match="empty 'place'"):
+        load_color_pick_config(write(tmp_path, data))
+
+
+def test_non_string_place_is_rejected(tmp_path):
+    data = {"colors": {"red": dict(GOOD["colors"]["red"], place=[1, 2])}}
+
+    with pytest.raises(InvalidColorRangeError, match="non-string 'place'"):
+        load_color_pick_config(write(tmp_path, data))
+
+
+def test_negative_place_duration_is_rejected(tmp_path):
+    data = {"colors": {"red": dict(
+        GOOD["colors"]["red"], place="place_left", place_duration_ms=-1
+    )}}
+
+    with pytest.raises(InvalidColorRangeError, match="negative 'place_duration_ms'"):
+        load_color_pick_config(write(tmp_path, data))
+
+
+def test_place_duration_without_place_is_rejected(tmp_path):
+    data = {"colors": {"red": dict(GOOD["colors"]["red"], place_duration_ms=100)}}
+
+    with pytest.raises(InvalidColorRangeError, match="without 'place'"):
+        load_color_pick_config(write(tmp_path, data))
+
+
+def test_malformed_top_level_yaml_is_a_config_error(tmp_path):
+    path = tmp_path / "color_pick.yaml"
+    path.write_text("- just\n- a\n- list\n", encoding="utf-8")
+
+    with pytest.raises(InvalidColorRangeError, match="top level must be a mapping"):
+        load_color_pick_config(str(path))
+
+
+def test_invalid_yaml_syntax_is_a_config_error(tmp_path):
+    path = tmp_path / "color_pick.yaml"
+    path.write_text("colors: [unclosed\n", encoding="utf-8")
+
+    with pytest.raises(InvalidColorRangeError, match="invalid YAML"):
+        load_color_pick_config(str(path))
+
+
 def test_non_integer_min_area_is_reported_as_a_config_error(tmp_path):
     data = {"colors": {"red": dict(GOOD["colors"]["red"], min_area_px="big")}}
 
     with pytest.raises(InvalidColorRangeError, match="non-integer 'min_area_px'"):
         load_color_pick_config(write(tmp_path, data))
+
+
+def test_fractional_duration_is_rejected_not_truncated(tmp_path):
+    """int(1.5) would silently become 1 and change the motion timing."""
+    data = {"colors": {"red": dict(GOOD["colors"]["red"], duration_ms=1.5)}}
+
+    with pytest.raises(InvalidColorRangeError, match="fractional 'duration_ms'"):
+        load_color_pick_config(write(tmp_path, data))
+
+
+def test_whole_float_duration_is_accepted(tmp_path):
+    """YAML writes some integers as 2.0; that is not an error."""
+    data = {"colors": {"red": dict(GOOD["colors"]["red"], duration_ms=2000.0)}}
+
+    _, motion_map = load_color_pick_config(write(tmp_path, data))
+
+    assert motion_map.duration_for("red") == 2000
+
+
+def test_boolean_duration_is_rejected(tmp_path):
+    data = {"colors": {"red": dict(GOOD["colors"]["red"], duration_ms=True)}}
+
+    with pytest.raises(InvalidColorRangeError, match="boolean 'duration_ms'"):
+        load_color_pick_config(write(tmp_path, data))
+
+
+def test_max_area_is_parsed_and_validated(tmp_path):
+    data = {"colors": {"red": dict(GOOD["colors"]["red"], max_area_px=5000)}}
+    palette, _ = load_color_pick_config(write(tmp_path, data))
+    assert palette["red"].max_area_px == 5000
+
+    bad = {"colors": {"red": dict(GOOD["colors"]["red"], max_area_px=1.5)}}
+    with pytest.raises(InvalidColorRangeError, match="fractional 'max_area_px'"):
+        load_color_pick_config(write(tmp_path, bad))
+
+
+def test_max_area_defaults_to_unbounded(tmp_path):
+    palette, _ = load_color_pick_config(write(tmp_path, GOOD))
+    assert palette["red"].max_area_px is None

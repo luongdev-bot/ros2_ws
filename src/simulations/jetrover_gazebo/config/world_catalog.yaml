@@ -1,0 +1,85 @@
+# Catalogue of the simulation worlds, read by scripts/sim_launcher_gui.py.
+#
+# The GUI lists every worlds/*.sdf it finds; this file only supplies the
+# human-readable label, the blurb and - importantly - the spawn point. A world
+# with no entry here still appears, labelled with its bare filename and spawned
+# at the origin.
+#
+# spawn: where to drop the robot, in world coordinates (metres, yaw in radians).
+#   Getting this wrong is the single most common way to waste a SLAM run: spawn
+#   inside a shelf and the robot is wedged; spawn outside the building and the
+#   lidar sees nothing but empty plane, so the map comes out blank.
+#
+# fuel: true means the world <include>s models from Gazebo Fuel, so
+#   scripts/install_gazebo_worlds.sh must have been run at least once.
+
+worlds:
+  - id: jetrover_world
+    file: jetrover_world.sdf
+    label: "JetRover - sân trống"
+    description: "Mặt phẳng trống, không tường. Dùng để test robot, KHÔNG hợp để chạy SLAM."
+    spawn: {x: 0.0, y: 0.0, yaw: 0.0}
+    slam_friendly: false
+    fuel: false
+
+  - id: color_blocks_world
+    file: color_blocks_world.sdf
+    label: "Khối màu - demo gắp vật"
+    description: "Sân trống kèm các khối màu cho demo color_pick. Không hợp để chạy SLAM."
+    spawn: {x: 0.0, y: 0.0, yaw: 0.0}
+    slam_friendly: false
+    fuel: false
+
+  - id: hospital
+    file: hospital.sdf
+    label: "Bệnh viện - hành lang 8 phòng"
+    description: "18 x 12 m. Hành lang dài, nhiều cửa giống nhau - bài test loop closure kinh điển."
+    spawn: {x: 0.0, y: 0.0, yaw: 0.0}
+    slam_friendly: true
+    fuel: true
+
+  - id: factory
+    file: factory.sdf
+    label: "Nhà máy - xưởng sản xuất"
+    description: "22 x 14 m. Sàn rộng, kệ pallet thành dãy, một phòng dụng cụ kín."
+    spawn: {x: 0.0, y: 0.0, yaw: 0.0}
+    slam_friendly: true
+    fuel: true
+
+  - id: office
+    file: office.sdf
+    label: "Văn phòng - open plan + phòng họp"
+    description: "14 x 10 m. Nhiều vật cản nhỏ rải rác thay vì tường dài."
+    spawn: {x: 0.0, y: 0.0, yaw: 0.0}
+    slam_friendly: true
+    fuel: true
+
+  - id: apartment
+    file: apartment.sdf
+    label: "Căn hộ - phòng nhỏ"
+    description: "10 x 8 m. Cửa hẹp, tầm nhìn ngắn - khó nhất trong sáu world."
+    spawn: {x: 0.0, y: 0.0, yaw: 0.0}
+    slam_friendly: true
+    fuel: true
+
+  - id: warehouse
+    file: warehouse.sdf
+    label: "Kho hàng AWS RoboMaker"
+    description: "Kho công nghiệp chính chủ Open Robotics - kệ cao, pallet, lối đi hẹp."
+    # The building spans roughly x[-7, 7] y[-11, 11]; the origin sits in the
+    # central aisle between the ShelfF block (west) and the ShelfD/E rows (east).
+    spawn: {x: 0.0, y: 0.0, yaw: 0.0}
+    slam_friendly: true
+    fuel: true
+
+  - id: depot
+    file: depot.sdf
+    label: "Depot - kho trung chuyển (MovAi)"
+    description: "Nhà kho lớn ~30 x 15 m. Rộng nhất, cần chạy lâu hơn để map kín."
+    # The Depot model is placed at (7.19, 1.10), so its interior spans roughly
+    # x[-7.8, 22.2] y[-6.5, 8.4]. The origin is inside but close to the west
+    # wall; spawning nearer the centre gives the lidar returns in every direction
+    # from the first scan, which slam_toolbox initialises far better from.
+    spawn: {x: 4.0, y: 1.0, yaw: 0.0}
+    slam_friendly: true
+    fuel: true

@@ -27,12 +27,9 @@
       <material name="black"/>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="-0.09927 -0.00018 0.07944" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="package://jetrover_description/meshes/common/back_shell_black_link_collision.stl" />
+        <box size="0.12869 0.16530 0.15496" />
       </geometry>
     </collision>
   </link>
@@ -76,12 +73,9 @@
       <material name="green"/>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="-0.00326 -0.00017 0.01909" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="package://jetrover_description/meshes/common/back_shell_green_link_collision.stl" />
+        <box size="0.30214 0.14402 0.11665" />
       </geometry>
     </collision>
   </link>

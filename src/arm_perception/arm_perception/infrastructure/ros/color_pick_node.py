@@ -16,10 +16,7 @@ import sys
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge, CvBridgeError
-from rclpy.callback_groups import (
-    MutuallyExclusiveCallbackGroup,
-    ReentrantCallbackGroup,
-)
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
@@ -55,6 +52,9 @@ class ColorPickNode(Node):
         self.declare_parameter("play_motion_action", "/arm_motion_server/play_motion")
         self.declare_parameter("confirm_frames", 5)
         self.declare_parameter("cooldown_s", 3.0)
+        # Recovery watchdog: if a dispatched motion has not reported back within
+        # this many seconds, cancel it and free the pipeline. 0 disables it.
+        self.declare_parameter("motion_timeout_s", 15.0)
         # 0.0 disables the centring check - useful while tuning, when you
         # want a trigger from anywhere in frame.
         self.declare_parameter("center_tolerance_px", 0.0)
@@ -89,21 +89,22 @@ class ColorPickNode(Node):
             center_tolerance_px=tolerance if tolerance > 0 else None,
         )
 
-        # Frame processing MUST be mutually exclusive: under a
-        # MultiThreadedExecutor a reentrant group would let _image_callback
-        # run concurrently with itself (OpenCV releases the GIL), and both
-        # PickPolicy's streak/state and RosMotionPlayer's busy flag are
-        # plain unsynchronised attributes. Two interleaved frames could each
-        # see "not busy" and dispatch a goal. The ~/enable service shares the
-        # group because it mutates the same use-case state.
-        self._frame_group = MutuallyExclusiveCallbackGroup()
-        # The action client gets its own group so goal/result callbacks are
-        # not stuck behind a frame that is still being processed.
-        self._action_group = ReentrantCallbackGroup()
+        # ONE mutually exclusive group for everything that touches the use
+        # case: the image callback, the ~/enable service, and the action
+        # client's goal/result callbacks. All three mutate PickPolicy state
+        # (the last one via _handle_motion_finished), and PickPolicy has no
+        # internal locking. Under a MultiThreadedExecutor any other split -
+        # including a reentrant group, which lets a callback run concurrently
+        # with *itself* - lets a motion completion race a streak update and
+        # clobber the cooldown.
+        #
+        # Serialising them is safe because nothing here blocks: play() returns
+        # as soon as the goal is sent, and detection is a few ms per frame.
+        self._callback_group = MutuallyExclusiveCallbackGroup()
         self._player = RosMotionPlayer(
             self,
             self.get_parameter("play_motion_action").value,
-            callback_group=self._action_group,
+            callback_group=self._callback_group,
         )
 
         self._detections_pub = self.create_publisher(
@@ -111,8 +112,24 @@ class ColorPickNode(Node):
         )
         self._debug_pub = self.create_publisher(Image, "~/debug_image", 1)
 
+        motion_timeout_s = float(self.get_parameter("motion_timeout_s").value)
+        if motion_timeout_s < 0:
+            self.get_logger().warning(
+                f"motion_timeout_s={motion_timeout_s} is negative; disabling the "
+                "watchdog (use 0 to disable it on purpose)"
+            )
+            motion_timeout_s = 0.0
+
         # The sink receives each frame's detections from inside the use
         # case, so they are published without running detection twice.
+        #
+        # The watchdog deadline uses this same node clock (ROS time, sim time
+        # under use_sim_time) on purpose: motion budgets - the .d6a timings and
+        # the JTC execution the arm runs - are all measured in ROS time, so the
+        # watchdog must be too, or a sim running below real time would trip it
+        # mid-motion. The one case it cannot cover is a fully stalled /clock,
+        # but that means Gazebo itself is dead - the camera has stopped and
+        # nothing downstream can make progress anyway.
         self._use_case = ColorPickUseCase(
             self._detector,
             policy,
@@ -120,6 +137,7 @@ class ColorPickNode(Node):
             self._player,
             clock=lambda: self.get_clock().now().nanoseconds * 1e-9,
             detection_sink=self._handle_detections,
+            motion_timeout_s=motion_timeout_s if motion_timeout_s > 0 else None,
         )
         if not bool(self.get_parameter("start_enabled").value):
             self._use_case.disable()
@@ -130,18 +148,32 @@ class ColorPickNode(Node):
 
         self.create_subscription(
             Image, image_topic, self._image_callback, qos_profile_sensor_data,
-            callback_group=self._frame_group,
+            callback_group=self._callback_group,
         )
         self.create_service(
             SetBool, "~/enable", self._enable_callback,
-            callback_group=self._frame_group,
+            callback_group=self._callback_group,
         )
+
+        # Drive the recovery watchdog independently of the camera: if the image
+        # stream stalls while a motion is in flight, a frame-driven check would
+        # never fire. Same callback group as the frame/enable callbacks so it
+        # serialises with them and needs no locking.
+        if motion_timeout_s > 0:
+            self.create_timer(
+                min(1.0, motion_timeout_s / 2.0),
+                self._use_case.check_watchdog,
+                callback_group=self._callback_group,
+            )
 
         self.get_logger().info(
             f"watching {image_topic} for {', '.join(palette.names())}"
         )
-        for color, motion in motion_map.as_dict().items():
-            self.get_logger().info(f"  {color:<8} -> action group {motion!r}")
+        for color in motion_map.colors():
+            sequence = " -> ".join(
+                repr(step.name) for step in motion_map.steps_for(color)
+            )
+            self.get_logger().info(f"  {color:<8} -> {sequence}")
         if not self._player.wait_for_server(timeout_sec=5.0):
             self.get_logger().warning(
                 f"{self.get_parameter('play_motion_action').value} not up yet - "

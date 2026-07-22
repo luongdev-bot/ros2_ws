@@ -361,4 +361,23 @@
       multiplier="1"
       offset="0" />
   </joint>
+
+  <!-- Grip friction. The jaw links had no surface friction, so even when the
+       fingers close on a block (mu 1.2, 50 g) it slid straight out. High mu on
+       the contacting jaw faces lets the closed gripper actually carry it.
+       NOTE: Gazebo friction grasping is force-sensitive - if a block still
+       slips after this, the grip force (r_joint closed target / effort) needs
+       tuning, or use a detachable-joint attacher. -->
+  <xacro:macro name="jaw_friction" params="link">
+    <gazebo reference="${link}">
+      <mu1>2.0</mu1>
+      <mu2>2.0</mu2>
+    </gazebo>
+  </xacro:macro>
+  <xacro:jaw_friction link="r_link"/>
+  <xacro:jaw_friction link="l_link"/>
+  <xacro:jaw_friction link="l_in_link"/>
+  <xacro:jaw_friction link="r_in_link"/>
+  <xacro:jaw_friction link="l_out_link"/>
+  <xacro:jaw_friction link="r_out_link"/>
 </robot>

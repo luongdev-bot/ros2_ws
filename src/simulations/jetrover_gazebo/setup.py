@@ -13,7 +13,9 @@ setup(
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob(os.path.join('launch', '*.py'))),
         (os.path.join('share', package_name, 'worlds'), glob(os.path.join('worlds', '*.sdf'))),
-        (os.path.join('share', package_name, 'config'), glob(os.path.join('config', '*.yaml'))),
+        (os.path.join('share', package_name, 'config'),
+            glob(os.path.join('config', '*.yaml'))
+            + glob(os.path.join('config', '*.config'))),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -23,6 +25,8 @@ setup(
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
-        'console_scripts': [],
+        'console_scripts': [
+            'sim_launcher_gui = jetrover_gazebo.sim_launcher_gui:main',
+        ],
     },
 )

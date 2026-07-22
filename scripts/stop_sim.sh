@@ -21,6 +21,36 @@
 WS="${WS:-$HOME/ros2_ws}"
 MYPID=$$
 
+# Never kill our own ancestors. This is not paranoia - two real cases:
+#   * sim_launcher_gui runs as
+#     $WS/install/jetrover_gazebo/lib/jetrover_gazebo/sim_launcher_gui, which
+#     the "$WS/install" pattern matches, so the GUI would kill itself every
+#     time it cleans up before starting a run;
+#   * it is started by `ros2 run jetrover_gazebo sim_launcher_gui`, and that
+#     supervising `ros2` process's command line contains "jetrover_gazebo",
+#     so cleanup would orphan the GUI from its launcher.
+# Excluding only $PPID covers the first but not the second, hence the whole
+# chain. A cleanup script has no business killing the tree that invoked it.
+# PID 1 is included on purpose rather than stopped before: in a container the
+# ROS launcher can BE init, and killing init takes the whole container down.
+# The digit test and the cycle guard exist because this list is interpolated
+# into an ERE - a `ps` returning anything unexpected must not be able to
+# malform the pattern or spin here forever.
+ancestor_pids() {
+  local pid=$MYPID seen=" "
+  while [[ "$pid" =~ ^[0-9]+$ ]]; do
+    case "$seen" in *" $pid "*) break ;; esac
+    echo "$pid"
+    seen="$seen$pid "
+    [ "$pid" -eq 1 ] && break
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]')
+  done
+}
+KEEP_PIDS=$(ancestor_pids | paste -sd '|' -)
+# Fall back to just this process if the walk produced nothing, so a broken
+# `ps` cannot turn the filter into an empty alternation that matches everything.
+[ -n "$KEEP_PIDS" ] || KEEP_PIDS=$MYPID
+
 # Patterns that identify *this* simulation only. Killing the parent
 # `ros2 launch ...` process makes it tear down its own child nodes, which is why
 # those come first - they cover children (robot_state_publisher, ros_gz_bridge,
@@ -65,7 +95,7 @@ PATTERNS=(
 collect() {
   for p in "${PATTERNS[@]}"; do
     pgrep -f -- "$p" 2>/dev/null
-  done | sort -u | grep -v "^${MYPID}$"
+  done | sort -u | grep -vE "^(${KEEP_PIDS})$"
 }
 
 pids=$(collect)

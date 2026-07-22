@@ -49,6 +49,10 @@ class FakePlayer(MotionPlayer):
     def is_busy(self):
         return self._busy
 
+    def cancel(self):
+        self.cancelled = getattr(self, "cancelled", 0) + 1
+        self._busy = False
+
     def complete(self, success=True):
         """Simulate the arm reporting the motion ended."""
         self._busy = False
@@ -137,6 +141,172 @@ class TestDispatch:
         use_case.process_frame(frame=object())
 
         assert player.played == [("pick", 0), ("pick", 0)]
+
+
+class TestPickThenPlace:
+    def _seq_case(self, player, *, cooldown_s=0.0):
+        return build(
+            FakeDetector([block("red")]), player, cooldown_s=cooldown_s,
+            bindings={
+                "red": MotionBinding(
+                    "pick", 0, place="place_left", place_duration_ms=1500
+                ),
+            },
+        )
+
+    def test_place_runs_only_after_pick_succeeds(self):
+        player = FakePlayer()
+        use_case, _ = self._seq_case(player)
+
+        use_case.process_frame(frame=object())
+        assert player.played == [("pick", 0)]      # place not queued yet
+
+        player.complete(success=True)              # pick finished
+        assert player.played == [("pick", 0), ("place_left", 1500)]
+
+    def test_camera_is_ignored_while_the_sequence_runs(self):
+        player = FakePlayer()
+        use_case, clock = self._seq_case(player)
+
+        use_case.process_frame(frame=object())     # -> pick
+        clock.advance(0.03)
+        # Pick still running: another sighting must not queue a second grasp.
+        assert use_case.process_frame(frame=object()).should_play is False
+        assert player.played == [("pick", 0)]
+
+    def test_failed_pick_abandons_the_place(self):
+        player = FakePlayer()
+        use_case, clock = self._seq_case(player, cooldown_s=5.0)
+
+        use_case.process_frame(frame=object())
+        player.complete(success=False)             # grasp failed
+        assert player.played == [("pick", 0)]      # nothing flung at the bin
+
+        # And the pipeline is in cooldown, not wedged mid-sequence.
+        assert use_case.process_frame(frame=object()).should_play is False
+
+    def test_re_enabling_mid_sequence_does_not_stack_a_second_motion(self):
+        player = FakePlayer()
+        use_case, _ = self._seq_case(player)
+
+        use_case.process_frame(frame=object())     # -> pick (sequence active)
+        use_case.disable()
+        use_case.enable()                          # must not reset the policy
+
+        # A fresh sighting must not queue a second grasp over the running one.
+        assert use_case.process_frame(frame=object()).should_play is False
+        assert player.played == [("pick", 0)]
+
+        # The in-flight sequence still finishes normally.
+        player.complete(success=True)
+        assert player.played == [("pick", 0), ("place_left", 1500)]
+
+    def test_stale_completion_after_release_is_ignored(self):
+        player = FakePlayer()
+        use_case, _ = self._seq_case(player)
+
+        use_case.process_frame(frame=object())
+        player.complete(success=True)              # pick -> place
+        player.complete(success=True)              # place -> release
+        player.complete(success=True)              # stale duplicate: no-op
+
+        assert player.played == [("pick", 0), ("place_left", 1500)]
+
+    def test_sequence_completes_then_cools_down_and_repeats(self):
+        player = FakePlayer()
+        use_case, clock = self._seq_case(player, cooldown_s=2.0)
+
+        use_case.process_frame(frame=object())
+        player.complete(success=True)              # pick
+        player.complete(success=True)              # place -> release
+        clock.advance(2.0)
+        use_case.process_frame(frame=object())     # cooldown elapsed -> pick again
+
+        assert player.played == [
+            ("pick", 0), ("place_left", 1500), ("pick", 0),
+        ]
+
+
+class TestWatchdog:
+    def _case(self, player, *, timeout=10.0, cooldown_s=0.0, place="place_left"):
+        clock = FakeClock()
+        use_case = ColorPickUseCase(
+            FakeDetector([block("red")]),
+            PickPolicy(confirm_frames=1, cooldown_s=cooldown_s),
+            StaticColorMotionMap({"red": MotionBinding("pick", 0, place=place)}),
+            player,
+            clock=clock,
+            motion_timeout_s=timeout,
+        )
+        return use_case, clock
+
+    def test_overrunning_motion_is_cancelled_and_recovered(self):
+        player = FakePlayer()
+        use_case, clock = self._case(player, timeout=10.0, cooldown_s=5.0)
+
+        use_case.process_frame(frame=object())     # -> pick, deadline at t=10
+        clock.advance(11.0)                        # blow through it
+        decision = use_case.process_frame(frame=object())
+
+        assert decision.reason == "motion timed out"
+        assert player.cancelled == 1
+
+        # A late completion for the cancelled motion is ignored, not chained.
+        player.complete(success=True)
+        assert player.played == [("pick", 0)]      # place never queued
+
+    def test_disabled_watchdog_never_times_out(self):
+        player = FakePlayer()
+        clock = FakeClock()
+        use_case = ColorPickUseCase(
+            FakeDetector([block("red")]),
+            PickPolicy(confirm_frames=1, cooldown_s=0.0),
+            StaticColorMotionMap({"red": MotionBinding("pick", 0)}),
+            player,
+            clock=clock,
+            motion_timeout_s=None,
+        )
+
+        use_case.process_frame(frame=object())
+        clock.advance(10_000.0)
+        decision = use_case.process_frame(frame=object())
+
+        assert decision.reason != "motion timed out"
+        assert getattr(player, "cancelled", 0) == 0
+
+    def test_each_step_gets_its_own_deadline(self):
+        player = FakePlayer()
+        use_case, clock = self._case(player, timeout=10.0)
+
+        use_case.process_frame(frame=object())     # pick, deadline t=10
+        clock.advance(8.0)
+        player.complete(success=True)              # pick done -> place, deadline t=18
+        assert player.played == [("pick", 0), ("place_left", 0)]
+
+        clock.advance(8.0)                         # t=16, before the place deadline
+        use_case.process_frame(frame=object())
+        assert getattr(player, "cancelled", 0) == 0  # place not cut short by pick's clock
+
+    def test_watchdog_recovers_even_while_disabled(self):
+        """The timer path (check_watchdog) must fire regardless of enable state."""
+        player = FakePlayer()
+        use_case, clock = self._case(player, timeout=10.0, cooldown_s=5.0)
+
+        use_case.process_frame(frame=object())     # pick, deadline t=10
+        use_case.disable()                         # pause triggering
+        clock.advance(11.0)
+
+        assert use_case.check_watchdog() is True    # as the node timer would call
+        assert player.cancelled == 1
+        assert use_case.check_watchdog() is False   # nothing left to recover
+
+    def test_non_positive_timeout_is_rejected(self):
+        with pytest.raises(ValueError):
+            ColorPickUseCase(
+                FakeDetector(), PickPolicy(), StaticColorMotionMap(
+                    {"red": MotionBinding("pick")}
+                ), FakePlayer(), clock=FakeClock(), motion_timeout_s=0.0,
+            )
 
 
 class TestFailureHandling:
@@ -254,6 +424,27 @@ class TestMotionMap:
             MotionBinding("")
         with pytest.raises(ValueError):
             MotionBinding("pick", duration_ms=-1)
+        with pytest.raises(ValueError):
+            MotionBinding("pick", place="")
+        with pytest.raises(ValueError):
+            MotionBinding("pick", place="place_left", place_duration_ms=-1)
+        with pytest.raises(ValueError):
+            MotionBinding("pick", place_duration_ms=100)  # budget, nothing to place
+
+    def test_steps_are_pick_then_place(self):
+        binding = MotionBinding("pick", 0, place="place_left", place_duration_ms=1500)
+        assert [(s.name, s.duration_ms) for s in binding.steps()] == [
+            ("pick", 0), ("place_left", 1500),
+        ]
+
+    def test_steps_is_pick_only_without_place(self):
+        assert [s.name for s in MotionBinding("pick", 0).steps()] == ["pick"]
+
+    def test_steps_for_returns_the_sequence(self):
+        motion_map = StaticColorMotionMap(
+            {"red": MotionBinding("pick", 0, place="place_left")}
+        )
+        assert [s.name for s in motion_map.steps_for("red")] == ["pick", "place_left"]
 
 
 class TestSinkRobustness:

@@ -42,6 +42,10 @@ class RosMotionPlayer(MotionPlayer):
         self._lock = threading.Lock()
         self._active_motion: Optional[str] = None
         self._goal_handle = None
+        # Latches a cancel that arrives before the goal is accepted, so the
+        # goal is aborted the moment the server accepts it rather than running
+        # to completion uncancelled.
+        self._cancel_requested = False
 
     def on_finished(self, callback: FinishedCallback) -> None:
         self._finished_callback = callback
@@ -68,16 +72,23 @@ class RosMotionPlayer(MotionPlayer):
                     f"{self._active_motion!r} is still running"
                 )
             self._active_motion = motion_name
+            self._goal_handle = None
+            self._cancel_requested = False
 
         # Every exit path from here on must release the slot, or a single
         # failure would wedge the player as permanently busy.
+        #
+        # Deliberately does NOT wait for the server: play() is called from the
+        # camera callback, and blocking there would stall frame processing (and
+        # the enable service) for the whole timeout while sensor data piles up.
+        # A missing server is reported immediately; the use case starts its
+        # cooldown and the next confirmed block retries.
         if not self._client.server_is_ready():
-            if not self._client.wait_for_server(timeout_sec=self._server_wait_timeout):
-                with self._lock:
-                    self._active_motion = None
-                raise MotionPlaybackError(
-                    f"action server {self._action_name!r} is not available"
-                )
+            with self._lock:
+                self._active_motion = None
+            raise MotionPlaybackError(
+                f"action server {self._action_name!r} is not available yet"
+            )
 
         goal = PlayMotion.Goal()
         goal.motion_name = motion_name
@@ -92,9 +103,16 @@ class RosMotionPlayer(MotionPlayer):
         future.add_done_callback(self._handle_goal_response)
 
     def cancel(self) -> None:
-        """Ask the arm to abort the running motion, if any."""
-        if self._goal_handle is not None:
-            self._goal_handle.cancel_goal_async()
+        """Ask the arm to abort the running motion, if any.
+
+        Safe to call before the goal is accepted: the request is latched and
+        the goal is aborted as soon as it arrives (see _handle_goal_response).
+        """
+        with self._lock:
+            self._cancel_requested = True
+            handle = self._goal_handle
+        if handle is not None:
+            handle.cancel_goal_async()
 
     def _handle_goal_response(self, future) -> None:
         motion = self._active_motion or "<unknown>"
@@ -112,7 +130,13 @@ class RosMotionPlayer(MotionPlayer):
             self._finish(motion, False)
             return
 
-        self._goal_handle = goal_handle
+        with self._lock:
+            self._goal_handle = goal_handle
+            cancel_requested = self._cancel_requested
+        if cancel_requested:
+            # A cancel landed while the goal request was still in flight; abort
+            # the goal now instead of letting it run to completion.
+            goal_handle.cancel_goal_async()
         goal_handle.get_result_async().add_done_callback(self._handle_result)
 
     def _handle_result(self, future) -> None:

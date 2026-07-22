@@ -28,12 +28,9 @@
       <material name="black"/>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="-0.00051 0.01418 0.00138" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="package://jetrover_description/meshes/arm/camera_connect_link.STL" />
+        <box size="0.05542 0.04494 0.00320" />
       </geometry>
     </collision>
   </link>
@@ -81,12 +78,9 @@
       </material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+      <origin xyz="0.00005 0.00079 -0.00001" rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="package://jetrover_description/meshes/arm/depth_cam_link_collision.stl" />
+        <box size="0.02488 0.09064 0.02514" />
       </geometry>
     </collision>
   </link>

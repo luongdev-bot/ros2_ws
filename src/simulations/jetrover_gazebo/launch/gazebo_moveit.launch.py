@@ -1,6 +1,7 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 
+
 from launch import LaunchDescription
 from launch.actions import (
     IncludeLaunchDescription,
@@ -13,6 +14,14 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, LaunchConfiguration
 from launch_ros.actions import Node, SetParameter
 from launch_ros.parameter_descriptions import ParameterValue
+
+# jetrover_sim.xacro reads MACHINE_TYPE and LIDAR_TYPE from the environment.
+# With them unset, xacro aborts ("environment variable 'LIDAR_TYPE' is not set")
+# and the launch dies before Gazebo starts. Default them here - set at import,
+# long before the lazy xacro Command actually runs - so the launch works from a
+# plain shell. setdefault, so an explicitly exported value still wins.
+os.environ.setdefault('MACHINE_TYPE', 'JetRover_Mecanum')
+os.environ.setdefault('LIDAR_TYPE', 'A1')
 
 
 def generate_launch_description():
@@ -55,7 +64,13 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(get_package_share_directory('ros_gz_sim'), 'launch', 'gz_sim.launch.py')
         ),
-        launch_arguments={'gz_args': [LaunchConfiguration('world'), ' -r']}.items(),
+        launch_arguments={'gz_args': [
+            LaunchConfiguration('world'), ' -r',
+            # Stock Fortress GUI plus the VisualizeLidar plugin, so the
+            # laser fan is drawn in the Gazebo window itself.
+            ' --gui-config ', os.path.join(
+                jetrover_gazebo_share, 'config', 'gui.config'),
+        ]}.items(),
     )
 
     robot_state_publisher_node = Node(

@@ -12,9 +12,9 @@
   block_blue sits exactly on the point pick.d6a grasps at (0.025, -0.245),
   and all four are inside the camera view at the default pose.
 
-  The blocks are 4 cm cubes - the size the JetRover gripper is built for -
-  and are NOT static, so a pick actually moves them. The bins are static,
-  flat plates used as place targets later on.
+  The blocks are 3 cm cubes and are NOT static, so a pick (or a mouse drag in
+  the GUI) actually moves them. The bins are static, flat plates used as place
+  targets later on.
 
   Lighting is deliberately brighter and less directional than
   jetrover_world.sdf: LAB thresholding degrades badly under hard shadows,
@@ -102,27 +102,27 @@
       </link>
     </model>
 
-    <!-- ================= pick blocks (4 cm cubes, dynamic) ================= -->
+    <!-- ================= pick blocks (3 cm cubes, dynamic) ================= -->
 
     <model name="block_red">
-      <pose>-0.135 -0.245 0.02 0 0 0</pose>
+      <pose>-0.135 -0.245 0.065 0 0 0</pose>
       <link name="link">
         <inertial>
           <mass>0.05</mass>
           <inertia>
-            <ixx>1.333e-5</ixx><ixy>0</ixy><ixz>0</ixz>
-            <iyy>1.333e-5</iyy><iyz>0</iyz>
-            <izz>1.333e-5</izz>
+            <ixx>7.5e-6</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>7.5e-6</iyy><iyz>0</iyz>
+            <izz>7.5e-6</izz>
           </inertia>
         </inertial>
         <collision name="collision">
-          <geometry><box><size>0.04 0.04 0.04</size></box></geometry>
+          <geometry><box><size>0.03 0.03 0.03</size></box></geometry>
           <surface>
             <friction><ode><mu>1.2</mu><mu2>1.2</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>0.04 0.04 0.04</size></box></geometry>
+          <geometry><box><size>0.03 0.03 0.03</size></box></geometry>
           <material>
             <ambient>0.75 0.05 0.05 1</ambient>
             <diffuse>0.85 0.06 0.06 1</diffuse>
@@ -133,24 +133,24 @@
     </model>
 
     <model name="block_green">
-      <pose>-0.055 -0.245 0.02 0 0 0</pose>
+      <pose>-0.055 -0.245 0.065 0 0 0</pose>
       <link name="link">
         <inertial>
           <mass>0.05</mass>
           <inertia>
-            <ixx>1.333e-5</ixx><ixy>0</ixy><ixz>0</ixz>
-            <iyy>1.333e-5</iyy><iyz>0</iyz>
-            <izz>1.333e-5</izz>
+            <ixx>7.5e-6</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>7.5e-6</iyy><iyz>0</iyz>
+            <izz>7.5e-6</izz>
           </inertia>
         </inertial>
         <collision name="collision">
-          <geometry><box><size>0.04 0.04 0.04</size></box></geometry>
+          <geometry><box><size>0.03 0.03 0.03</size></box></geometry>
           <surface>
             <friction><ode><mu>1.2</mu><mu2>1.2</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>0.04 0.04 0.04</size></box></geometry>
+          <geometry><box><size>0.03 0.03 0.03</size></box></geometry>
           <material>
             <ambient>0.05 0.65 0.10 1</ambient>
             <diffuse>0.06 0.75 0.12 1</diffuse>
@@ -160,25 +160,50 @@
       </link>
     </model>
 
+    <!-- Block shelf: raise the four cubes ~3 cm so the gripper's descent grabs
+         the cube rather than closing above a floor cube. One low static shelf
+         under all four blocks (they sit at x -0.135..0.105, y -0.245). 5 cm
+         tall (top at 0.05) so each 3 cm cube (centred z=0.065, bottom 0.05)
+         rests on it. Neutral grey so it doesn't move or trip the detector.
+         Only block_blue sits at the fixed grasp x,y (0.025,-0.245), so it is
+         the pickable one. TUNE the shelf height + cube z together if the grip
+         still sits high or low after a live test. -->
+    <model name="block_shelf">
+      <static>true</static>
+      <pose>-0.015 -0.245 0.025 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.30 0.07 0.05</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.30 0.07 0.05</size></box></geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
     <model name="block_blue">
-      <pose>0.025 -0.245 0.02 0 0 0</pose>
+      <pose>0.025 -0.245 0.065 0 0 0</pose>
       <link name="link">
         <inertial>
           <mass>0.05</mass>
           <inertia>
-            <ixx>1.333e-5</ixx><ixy>0</ixy><ixz>0</ixz>
-            <iyy>1.333e-5</iyy><iyz>0</iyz>
-            <izz>1.333e-5</izz>
+            <ixx>7.5e-6</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>7.5e-6</iyy><iyz>0</iyz>
+            <izz>7.5e-6</izz>
           </inertia>
         </inertial>
         <collision name="collision">
-          <geometry><box><size>0.04 0.04 0.04</size></box></geometry>
+          <geometry><box><size>0.03 0.03 0.03</size></box></geometry>
           <surface>
             <friction><ode><mu>1.2</mu><mu2>1.2</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>0.04 0.04 0.04</size></box></geometry>
+          <geometry><box><size>0.03 0.03 0.03</size></box></geometry>
           <material>
             <ambient>0.05 0.10 0.75 1</ambient>
             <diffuse>0.06 0.12 0.85 1</diffuse>
@@ -189,24 +214,24 @@
     </model>
 
     <model name="block_yellow">
-      <pose>0.105 -0.245 0.02 0 0 0</pose>
+      <pose>0.105 -0.245 0.065 0 0 0</pose>
       <link name="link">
         <inertial>
           <mass>0.05</mass>
           <inertia>
-            <ixx>1.333e-5</ixx><ixy>0</ixy><ixz>0</ixz>
-            <iyy>1.333e-5</iyy><iyz>0</iyz>
-            <izz>1.333e-5</izz>
+            <ixx>7.5e-6</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>7.5e-6</iyy><iyz>0</iyz>
+            <izz>7.5e-6</izz>
           </inertia>
         </inertial>
         <collision name="collision">
-          <geometry><box><size>0.04 0.04 0.04</size></box></geometry>
+          <geometry><box><size>0.03 0.03 0.03</size></box></geometry>
           <surface>
             <friction><ode><mu>1.2</mu><mu2>1.2</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>0.04 0.04 0.04</size></box></geometry>
+          <geometry><box><size>0.03 0.03 0.03</size></box></geometry>
           <material>
             <ambient>0.80 0.70 0.05 1</ambient>
             <diffuse>0.90 0.80 0.06 1</diffuse>

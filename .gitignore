@@ -13,6 +13,11 @@ __pycache__/
 src/rtabmap/
 src/rtabmap_ros/
 
+# SLAM maps produced by scripts/sim_launcher_gui.py. These are per-machine
+# recording artifacts (a .pgm can be megabytes), not source — the worlds that
+# generate them ARE tracked, so any map can be re-made.
+maps/
+
 # Editor / OS
 *.swp
 .DS_Store

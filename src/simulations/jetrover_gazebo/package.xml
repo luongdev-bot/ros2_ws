@@ -19,6 +19,20 @@
   <depend>moveit_configs_utils</depend>
   <depend>rviz2</depend>
 
+  <!-- sim_launcher_gui: tkinter for the window, yaml for world_catalog.yaml,
+       nav2_map_server for the map_saver_cli it shells out to when saving. -->
+  <exec_depend>python3-tk</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>nav2_map_server</exec_depend>
+
+  <!-- The GUI opens terminals running these packages' launch files. They are
+       exec-only: nothing here links or imports them, but without them the
+       window comes up and every terminal it spawns dies with "package not
+       found". -->
+  <exec_depend>slam</exec_depend>
+  <exec_depend>navigation</exec_depend>
+  <exec_depend>peripherals</exec_depend>
+
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>

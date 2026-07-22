@@ -71,7 +71,11 @@
       <topic>/scan</topic>
       <update_rate>10</update_rate>
       <always_on>true</always_on>
-      <visualize>false</visualize>
+      <!-- Draws the scan rays inside Gazebo itself. On its own this only
+           marks the sensor as visualisable; the rays appear once the
+           VisualizeLidar GUI plugin is loaded, which the worlds' <gui>
+           block does. -->
+      <visualize>true</visualize>
       <lidar>
         <scan>
           <horizontal>

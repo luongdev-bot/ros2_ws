@@ -28,14 +28,11 @@
       <material name="green"/>
     </visual>
    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://jetrover_description/meshes/mecanum/base_link_collision.stl" />
-      </geometry>
-    </collision>
+     <origin xyz="-0.00083 -0.00000 -0.05640" rpy="0 0 0" />
+     <geometry>
+       <box size="0.30208 0.14567 0.05403" />
+     </geometry>
+   </collision>
   </link>
 
   <link

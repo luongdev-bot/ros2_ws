@@ -104,10 +104,21 @@ class LabBlockDetector(BlockDetector):
         if not contours:
             return None
 
-        biggest = max(contours, key=cv2.contourArea)
-        area = float(cv2.contourArea(biggest))
-        if area < color_range.min_area_px:
+        # Pick the largest contour that is still *block-sized*, not simply the
+        # largest one. A same-coloured sorting bin or tray is bigger than the
+        # block sitting in front of it, so "largest wins" would hand the arm
+        # the bin's centroid and it would grasp empty air.
+        candidates = [
+            (cv2.contourArea(c), c) for c in contours
+        ]
+        candidates = [
+            (a, c) for a, c in candidates
+            if a >= color_range.min_area_px and color_range.accepts_area(a)
+        ]
+        if not candidates:
             return None
+
+        area, biggest = max(candidates, key=lambda pair: pair[0])
 
         (cx, cy), (w, h), angle = cv2.minAreaRect(biggest)
 

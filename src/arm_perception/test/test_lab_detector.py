@@ -159,3 +159,57 @@ class TestDebugRendering:
         annotated = draw_detections(frame, detector.detect(frame))
 
         assert not np.array_equal(annotated, frame)
+
+
+class TestAreaBounds:
+    def test_max_area_rejects_an_oversized_surface(self):
+        """A same-coloured wall must not be mistaken for a block."""
+        bounded = ColorPalette.of(
+            ColorRange("red", (40, 150, 140), (255, 255, 255),
+                       min_area_px=50, max_area_px=500)
+        )
+        detector = LabBlockDetector(bounded)
+        # Fills most of the frame -> far above max_area_px.
+        frame = frame_with([(BGR_RED, 20, 20, 620, 460)])
+
+        assert detector.detect(frame) == []
+
+    def test_block_sized_blob_still_passes(self):
+        bounded = ColorPalette.of(
+            ColorRange("red", (40, 150, 140), (255, 255, 255),
+                       min_area_px=50, max_area_px=100000)
+        )
+        detector = LabBlockDetector(bounded)
+
+        assert len(detector.detect(frame_with([(BGR_RED, 280, 200, 360, 280)]))) == 1
+
+    def test_largest_blob_within_bounds_wins_not_the_largest_overall(self):
+        """The point of the upper bound: a huge distractor is skipped and the
+        block behind it is still reported."""
+        bounded = ColorPalette.of(
+            ColorRange("red", (40, 150, 140), (255, 255, 255),
+                       min_area_px=50, max_area_px=8000)
+        )
+        detector = LabBlockDetector(bounded)
+        frame = frame_with([
+            (BGR_RED, 10, 10, 300, 200),     # oversized distractor
+            (BGR_RED, 400, 300, 470, 370),   # the actual block
+        ])
+
+        detections = detector.detect(frame)
+
+        assert len(detections) == 1
+        assert detections[0].center_x > 350
+
+    def test_max_area_must_exceed_min_area(self):
+        with pytest.raises(InvalidColorRangeError, match="must exceed"):
+            ColorRange("red", (0, 0, 0), (255, 255, 255),
+                       min_area_px=500, max_area_px=100)
+
+    def test_non_positive_max_area_is_rejected(self):
+        with pytest.raises(InvalidColorRangeError, match="must be positive"):
+            ColorRange("red", (0, 0, 0), (255, 255, 255), max_area_px=0)
+
+    def test_accepts_area_without_an_upper_bound(self):
+        rng = ColorRange("red", (0, 0, 0), (255, 255, 255))
+        assert rng.accepts_area(10**9) is True
