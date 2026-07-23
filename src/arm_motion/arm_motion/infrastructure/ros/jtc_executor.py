@@ -18,7 +18,9 @@ from typing import Dict, List, Optional
 from builtin_interfaces.msg import Duration as DurationMsg
 from control_msgs.action import FollowJointTrajectory
 from rclpy.action import ActionClient
+from rclpy.duration import Duration
 from rclpy.node import Node
+from rclpy.time import Time
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from ...domain.errors import MotionCancelledError, MotionExecutionError
@@ -30,6 +32,8 @@ from ...domain.robot_profile import RobotProfile
 POLL_INTERVAL_S = 0.02
 # Grace period added to the motion duration before we declare a timeout.
 RESULT_GRACE_S = 5.0
+# Wall-clock limit while waiting for a simulated ROS clock to start.
+CLOCK_START_TIMEOUT_S = 5.0
 # How long execute() waits for a previous execution to finish before giving up.
 DEFAULT_ACQUIRE_TIMEOUT_S = 10.0
 
@@ -239,7 +243,10 @@ class JtcTrajectoryExecutor(TrajectoryExecutor):
         self._wait_for_servers(trajectories.keys())
 
         total_s = motion.total_duration_ms / 1000.0
-        deadline = time.monotonic() + total_s + RESULT_GRACE_S
+        started = self._wait_for_clock(motion.name, cancelled)
+        deadline = started + Duration(seconds=total_s + RESULT_GRACE_S)
+        # Keep rollback detection continuous across all wait phases.
+        last_seen = [started]
 
         succeeded = False
         try:
@@ -255,7 +262,15 @@ class JtcTrajectoryExecutor(TrajectoryExecutor):
 
             handles = {}
             for group, future in goal_futures.items():
-                handle = self._await(future, deadline, cancelled, f"{group} goal")
+                handle = self._await(
+                    future,
+                    started,
+                    deadline,
+                    cancelled,
+                    motion.name,
+                    f"{group} goal",
+                    last_seen,
+                )
                 if handle is None or not handle.accepted:
                     raise MotionExecutionError(
                         f"{self._namespaces[group]} rejected the trajectory"
@@ -265,7 +280,15 @@ class JtcTrajectoryExecutor(TrajectoryExecutor):
             result_futures = {
                 group: handle.get_result_async() for group, handle in handles.items()
             }
-            self._await_all(result_futures, motion, deadline, cancelled, on_progress)
+            self._await_all(
+                result_futures,
+                motion,
+                started,
+                deadline,
+                cancelled,
+                on_progress,
+                last_seen,
+            )
             succeeded = True
         finally:
             if not succeeded:
@@ -314,12 +337,48 @@ class JtcTrajectoryExecutor(TrajectoryExecutor):
                     "is the controller spawned?"
                 )
 
-    def _await(self, future, deadline: float, cancelled: CancelCheck, what: str):
+    def _wait_for_clock(
+        self, motion_name: str, cancelled: CancelCheck
+    ) -> Time:
+        """Wait until ROS time has started, as a sim clock begins at zero."""
+        wall_deadline = time.perf_counter() + CLOCK_START_TIMEOUT_S
+        now = self._node.get_clock().now()
+        while now.nanoseconds == 0:
+            if cancelled():
+                raise MotionCancelledError(
+                    f"motion '{motion_name}' cancelled while waiting for "
+                    "ROS clock"
+                )
+            if time.perf_counter() >= wall_deadline:
+                raise MotionExecutionError(
+                    "ROS clock never started; is /clock being published?"
+                )
+            time.sleep(POLL_INTERVAL_S)
+            now = self._node.get_clock().now()
+        return now
+
+    def _await(
+        self,
+        future,
+        started: Time,
+        deadline: Time,
+        cancelled: CancelCheck,
+        motion_name: str,
+        what: str,
+        last_seen: List[Time],
+    ):
         """Block until ``future`` resolves, honouring cancel and deadline."""
         while not future.done():
             if cancelled():
                 raise MotionCancelledError(f"cancelled while waiting for {what}")
-            if time.monotonic() > deadline:
+            now = self._node.get_clock().now()
+            if now < last_seen[0]:
+                raise MotionExecutionError(
+                    f"ROS clock moved backwards during motion '{motion_name}'; "
+                    "aborting"
+                )
+            last_seen[0] = now
+            if now > deadline:
                 raise MotionExecutionError(f"timed out waiting for {what}")
             time.sleep(POLL_INTERVAL_S)
         return _result_or_error(future, what)
@@ -328,26 +387,47 @@ class JtcTrajectoryExecutor(TrajectoryExecutor):
         self,
         result_futures: Dict[str, object],
         motion: Motion,
-        deadline: float,
+        started: Time,
+        deadline: Time,
         cancelled: CancelCheck,
         on_progress: Optional[ProgressCallback],
+        last_seen: List[Time],
     ) -> None:
         cumulative_ms = motion.cumulative_times_ms()
         step_count = len(motion)
-        started = time.monotonic()
+        progress_started = self._node.get_clock().now()
+        if progress_started < last_seen[0]:
+            raise MotionExecutionError(
+                f"ROS clock moved backwards during motion '{motion.name}'; "
+                "aborting"
+            )
+        last_seen[0] = progress_started
+        last_elapsed_ms = 0.0
         reported = -1
         checked = set()
 
         while True:
             if cancelled():
                 raise MotionCancelledError(f"motion '{motion.name}' cancelled")
-            if time.monotonic() > deadline:
+            now = self._node.get_clock().now()
+            if now < last_seen[0]:
+                raise MotionExecutionError(
+                    f"ROS clock moved backwards during motion '{motion.name}'; "
+                    "aborting"
+                )
+            last_seen[0] = now
+            if now > deadline:
                 raise MotionExecutionError(
                     f"motion '{motion.name}' did not finish before its deadline"
                 )
 
             if on_progress is not None:
-                elapsed_ms = (time.monotonic() - started) * 1000.0
+                elapsed = now - progress_started
+                elapsed_ms = max(
+                    last_elapsed_ms,
+                    elapsed.nanoseconds / 1_000_000.0,
+                )
+                last_elapsed_ms = elapsed_ms
                 index = _step_at(cumulative_ms, elapsed_ms)
                 if index != reported:
                     reported = index

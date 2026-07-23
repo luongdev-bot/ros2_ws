@@ -10,6 +10,8 @@ import time
 
 import pytest
 from control_msgs.action import FollowJointTrajectory
+from rclpy.clock import ClockType
+from rclpy.time import Time
 
 from arm_motion.domain.errors import MotionCancelledError, MotionExecutionError
 from arm_motion.domain.joint_spec import JointKind, JointSpec
@@ -21,6 +23,31 @@ from arm_motion.infrastructure.ros.jtc_executor import JtcTrajectoryExecutor
 
 STATUS_SUCCEEDED = 4
 STATUS_ABORTED = 5
+
+
+class FakeClock:
+    def __init__(self, seconds=1.0):
+        self._nanoseconds = int(seconds * 1_000_000_000)
+
+    def now(self):
+        return Time(
+            nanoseconds=self._nanoseconds,
+            clock_type=ClockType.ROS_TIME,
+        )
+
+    def set(self, seconds):
+        self._nanoseconds = int(seconds * 1_000_000_000)
+
+    def advance(self, seconds):
+        self._nanoseconds += int(seconds * 1_000_000_000)
+
+
+class FakeNode:
+    def __init__(self, clock):
+        self._clock = clock
+
+    def get_clock(self):
+        return self._clock
 
 
 class FakeFuture:
@@ -81,6 +108,29 @@ class FakeHandle:
         return FakeFuture(None)
 
 
+class ManualHandle(FakeHandle):
+    """A handle whose result is resolved explicitly by a deterministic test."""
+
+    def get_result_async(self):
+        return self._future
+
+    def finish(self):
+        self._future.resolve(self._result)
+
+
+class JumpOnResultHandle(ManualHandle):
+    """Move the fake ROS clock when the result wait begins."""
+
+    def __init__(self, clock, jump_to):
+        super().__init__()
+        self._clock = clock
+        self._jump_to = jump_to
+
+    def get_result_async(self):
+        self._clock.set(self._jump_to)
+        return self._future
+
+
 class FakeClient:
     def __init__(self, handle=None, server_available=True):
         self.handle = handle if handle is not None else FakeHandle()
@@ -129,6 +179,7 @@ def profile():
 def executor(profile, monkeypatch):
     """An executor whose ActionClients are fakes."""
     created = {}
+    clock = FakeClock()
 
     def fake_action_client(node, action_type, namespace, callback_group=None):
         client = FakeClient()
@@ -137,17 +188,54 @@ def executor(profile, monkeypatch):
 
     monkeypatch.setattr(module, 'ActionClient', fake_action_client)
     ex = JtcTrajectoryExecutor(
-        node=object(),
+        node=FakeNode(clock),
         profile=profile,
         controller_namespaces={'arm': '/arm_ctl', 'gripper': '/grip_ctl'},
     )
     ex.fakes = created
+    ex.clock = clock
     return ex
 
 
 def make_motion(profile, steps=2, duration_ms=100):
     pose = profile.home_pose()
     return Motion('m', tuple(MotionStep(pose, duration_ms) for _ in range(steps)))
+
+
+def _install_manual_handles(executor):
+    handles = [ManualHandle(), ManualHandle()]
+    executor.fakes['/arm_ctl'].handle = handles[0]
+    executor.fakes['/grip_ctl'].handle = handles[1]
+    return handles
+
+
+def _drive_polling(
+    monkeypatch,
+    clock,
+    handles,
+    *,
+    wall_step_s,
+    ros_step_s,
+    finish_after=None,
+):
+    """Advance wall and ROS time independently on each executor poll."""
+    timing = {'polls': 0, 'wall_s': 0.0, 'ros_s': 0.0}
+
+    def fake_monotonic():
+        return timing['wall_s']
+
+    def advance(_interval):
+        timing['polls'] += 1
+        timing['wall_s'] += wall_step_s
+        timing['ros_s'] += ros_step_s
+        clock.advance(ros_step_s)
+        if finish_after is not None and timing['polls'] == finish_after:
+            for handle in handles:
+                handle.finish()
+
+    monkeypatch.setattr(module.time, 'monotonic', fake_monotonic)
+    monkeypatch.setattr(module.time, 'sleep', advance)
+    return timing
 
 
 class TestHappyPath:
@@ -166,6 +254,194 @@ class TestHappyPath:
 
     def test_not_busy_after_completion(self, executor, profile):
         executor.execute(make_motion(profile))
+        assert not executor.is_busy()
+
+
+class TestRosTimeDeadline:
+
+    def test_slow_simulation_finishes_within_ros_time_budget(
+        self, executor, profile, monkeypatch
+    ):
+        handles = _install_manual_handles(executor)
+        timing = _drive_polling(
+            monkeypatch,
+            executor.clock,
+            handles,
+            wall_step_s=2.0,
+            ros_step_s=0.4,
+            finish_after=10,
+        )
+        progress = []
+        pose = profile.home_pose()
+        motion = Motion(
+            'm',
+            tuple(
+                MotionStep(pose, duration_ms)
+                for duration_ms in (1000, 1000, 2400)
+            ),
+        )
+
+        executor.execute(
+            motion,
+            on_progress=lambda i, n: progress.append((i, n)),
+        )
+
+        assert timing['wall_s'] == pytest.approx(20.0)
+        assert timing['ros_s'] == pytest.approx(4.0)
+        assert progress == [(0, 3), (1, 3), (2, 3), (3, 3)]
+
+    def test_motion_times_out_only_after_ros_time_budget(
+        self, executor, profile, monkeypatch
+    ):
+        handles = _install_manual_handles(executor)
+        timing = _drive_polling(
+            monkeypatch,
+            executor.clock,
+            handles,
+            wall_step_s=0.01,
+            ros_step_s=1.0,
+        )
+
+        with pytest.raises(MotionExecutionError, match='did not finish'):
+            executor.execute(make_motion(profile, steps=1, duration_ms=100))
+
+        assert timing['wall_s'] < 0.1
+        assert timing['ros_s'] == pytest.approx(6.0)
+        assert all(handle.cancelled for handle in handles)
+
+    def test_waits_for_sim_clock_before_starting_deadline(
+        self, executor, profile, monkeypatch
+    ):
+        executor.clock.set(0.0)
+        handles = _install_manual_handles(executor)
+        timing = {'polls': 0, 'wall_s': 0.0}
+
+        def fake_monotonic():
+            return timing['wall_s']
+
+        def advance(_interval):
+            timing['polls'] += 1
+            timing['wall_s'] += 10.0
+            if timing['polls'] == 3:
+                executor.clock.set(1.0)
+            elif timing['polls'] == 4:
+                executor.clock.advance(0.1)
+                for handle in handles:
+                    handle.finish()
+
+        monkeypatch.setattr(module.time, 'monotonic', fake_monotonic)
+        monkeypatch.setattr(module.time, 'sleep', advance)
+
+        executor.execute(make_motion(profile, steps=1, duration_ms=100))
+
+        assert timing == {'polls': 4, 'wall_s': 40.0}
+
+    def test_missing_sim_clock_times_out_and_releases_executor(
+        self, executor, profile, monkeypatch
+    ):
+        executor.clock.set(0.0)
+        handles = _install_manual_handles(executor)
+        timing = {'wall_s': 0.0}
+
+        monkeypatch.setattr(
+            module.time, 'perf_counter', lambda: timing['wall_s']
+        )
+
+        def advance(_interval):
+            timing['wall_s'] += 1.0
+            if executor.clock.now().nanoseconds != 0:
+                for handle in handles:
+                    handle.finish()
+
+        monkeypatch.setattr(module.time, 'sleep', advance)
+
+        with pytest.raises(MotionExecutionError, match='ROS clock never started'):
+            executor.execute(make_motion(profile))
+
+        assert not executor.is_busy()
+        assert executor.fakes['/arm_ctl'].goals_sent == 0
+
+        executor.clock.set(1.0)
+        executor.execute(make_motion(profile))
+
+        assert executor.fakes['/arm_ctl'].goals_sent == 1
+        assert not executor.is_busy()
+
+    def test_backward_clock_jump_aborts_motion(
+        self, executor, profile, monkeypatch
+    ):
+        handles = _install_manual_handles(executor)
+
+        def jump_back(_interval):
+            executor.clock.set(0.5)
+
+        monkeypatch.setattr(module.time, 'sleep', jump_back)
+
+        with pytest.raises(
+            MotionExecutionError, match='clock moved backwards'
+        ):
+            executor.execute(make_motion(profile, duration_ms=1000))
+
+        assert all(handle.cancelled for handle in handles)
+
+    def test_partial_backward_clock_jump_aborts_and_releases_executor(
+        self, executor, profile, monkeypatch
+    ):
+        handles = _install_manual_handles(executor)
+        samples = iter((4.0, 2.0))
+
+        def advance_then_jump_back(_interval):
+            executor.clock.set(next(samples))
+
+        monkeypatch.setattr(module.time, 'sleep', advance_then_jump_back)
+
+        with pytest.raises(MotionExecutionError, match='clock moved backwards'):
+            executor.execute(make_motion(profile, duration_ms=1000))
+
+        assert all(handle.cancelled for handle in handles)
+        assert not executor.is_busy()
+
+        later_handles = _install_manual_handles(executor)
+
+        def finish_later(_interval):
+            executor.clock.advance(0.1)
+            for handle in later_handles:
+                handle.finish()
+
+        monkeypatch.setattr(module.time, 'sleep', finish_later)
+        executor.execute(make_motion(profile))
+
+        assert not executor.is_busy()
+
+    def test_backward_jump_between_goal_and_result_waits_aborts_and_releases_lock(
+        self, executor, profile, monkeypatch
+    ):
+        handles = [
+            JumpOnResultHandle(executor.clock, 2.0),
+            JumpOnResultHandle(executor.clock, 2.0),
+        ]
+        for namespace, handle in zip(('/arm_ctl', '/grip_ctl'), handles):
+            executor.fakes[namespace].handle = handle
+            executor.fakes[namespace].defer_goal_response = True
+
+        polls = {'count': 0}
+
+        def advance(_interval):
+            polls['count'] += 1
+            if polls['count'] == 1:
+                executor.clock.set(4.0)
+            elif polls['count'] == 2:
+                for client in executor.fakes.values():
+                    client.accept_pending()
+            else:
+                executor.clock.advance(10.0)
+
+        monkeypatch.setattr(module.time, 'sleep', advance)
+
+        with pytest.raises(MotionExecutionError, match='clock moved backwards'):
+            executor.execute(make_motion(profile, duration_ms=1000))
+
+        assert all(handle.cancelled for handle in handles)
         assert not executor.is_busy()
 
 
