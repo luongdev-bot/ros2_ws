@@ -115,6 +115,9 @@ def generate_launch_description():
         package='ros_gz_bridge',
         executable='parameter_bridge',
         output='screen',
+        arguments=[
+            '/world/color_blocks_world/set_pose@ros_gz_interfaces/srv/SetEntityPose',
+        ],
         parameters=[{
             'config_file': os.path.join(jetrover_gazebo_share, 'config', 'gz_bridge.yaml'),
             'use_sim_time': True,
@@ -142,8 +145,18 @@ def generate_launch_description():
         arguments=['gripper_controller'],
         output='screen',
     )
+    grasp_attacher_node = Node(
+        package='jetrover_gazebo',
+        executable='grasp_attacher',
+        output='screen',
+        parameters=[{
+            'robot_model_name': LaunchConfiguration('robot_name'),
+            'use_sim_time': True,
+        }],
+    )
     # Spawners fail fast if controller_manager isn't up yet; chain them after
-    # the entity has finished spawning instead of racing it.
+    # the entity has finished spawning instead of racing it. The attacher also
+    # needs the robot's TF tree and model pose, so start it in the same group.
     delayed_controller_spawners = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=spawn_node,
@@ -151,6 +164,7 @@ def generate_launch_description():
                 joint_state_broadcaster_spawner,
                 arm_controller_spawner,
                 gripper_controller_spawner,
+                grasp_attacher_node,
             ],
         )
     )

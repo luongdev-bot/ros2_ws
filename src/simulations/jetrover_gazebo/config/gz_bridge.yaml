@@ -32,6 +32,29 @@
   gz_type_name: "ignition.msgs.Model"
   direction: GZ_TO_ROS
 
+# SceneBroadcaster already computes this stream for the Gazebo GUI.  Bridge it
+# lazily with depth-one queues so the grasp attacher sees current model poses
+# without adding a per-block Gazebo plugin or accumulating stale samples.
+- ros_topic_name: "/world/color_blocks_world/dynamic_pose/info"
+  gz_topic_name: "/world/color_blocks_world/dynamic_pose/info"
+  ros_type_name: "tf2_msgs/msg/TFMessage"
+  gz_type_name: "ignition.msgs.Pose_V"
+  direction: GZ_TO_ROS
+  subscriber_queue: 1
+  publisher_queue: 1
+  lazy: true
+
+# The Fortress SetEntityPose service does not touch velocity. A small world
+# system consumes this held/released state and applies one-step zero-velocity
+# commands at physics rate while a block is held.
+- ros_topic_name: "/grasp/entity_command"
+  gz_topic_name: "/grasp/entity_command"
+  ros_type_name: "ros_gz_interfaces/msg/Entity"
+  gz_type_name: "ignition.msgs.Entity"
+  direction: ROS_TO_GZ
+  subscriber_queue: 1
+  publisher_queue: 1
+
 - ros_topic_name: "/scan"
   gz_topic_name: "/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"

@@ -34,6 +34,34 @@ export MACHINE_TYPE=JetRover_Mecanum   # hoặc JetRover_Tank / JetRover_Acker
 export LIDAR_TYPE=A1                   # hoặc G4 / A2 / S2L / LD14P
 ```
 
+## Action groups cho color pick
+
+`color_pick.yaml` dùng bốn action group dẫn xuất có hậu tố
+`_release`. Sau khi clone workspace, tạo chúng từ các group
+`place_left/center/center1/right.d6a` đã có trong thư viện:
+
+```bash
+python3 ~/ros2_ws/scripts/provision_color_pick_release_groups.py
+```
+
+Script mặc định đọc/ghi `~/ActionGroups` (hoặc
+`ARM_MOTION_LIBRARY_DIR`), không ghi đè file `_release` đã có, và sẽ
+báo lỗi nếu thiếu group gốc. Mỗi bản `_release` giữ nguyên toàn bộ group
+gốc, ngoại trừ giá trị kẹp của **bước cuối cùng** được đặt về detent OPEN
+theo profile `jetrover_arm.yaml`.
+
+Quy trình dạy lại: mở và dạy group gốc `place_*` trong arm editor, lưu nó,
+sau đó tạo lại các bản dẫn xuất bằng:
+
+```bash
+python3 ~/ros2_ws/scripts/provision_color_pick_release_groups.py --force
+```
+
+Không dạy trực tiếp group `_release`. Arm editor có thể chuẩn hoá mọi giá
+trị kẹp trong file gốc về pulse detent (ví dụ khoảng `596` cho CLOSED); đó
+là bình thường. Script không tìm pulse `400`: nó chỉ mở kẹp ở bước cuối,
+vì vậy quy trình trên vẫn hoạt động sau khi editor lưu lại file.
+
 > ⚠️ Chỉ **JetRover_Mecanum** có bánh xe quay được trong vật lý Gazebo (khớp
 > `continuous`). Tank/Acker vẫn hiển thị đúng hình dạng trong RViz nhưng
 > bánh xe hiện là khớp `fixed` (chỉ để hiển thị, chưa lái được trong Gazebo).

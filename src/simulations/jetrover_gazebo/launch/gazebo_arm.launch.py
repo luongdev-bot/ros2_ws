@@ -177,6 +177,9 @@ def generate_launch_description():
         package='ros_gz_bridge',
         executable='parameter_bridge',
         output='screen',
+        arguments=[
+            '/world/color_blocks_world/set_pose@ros_gz_interfaces/srv/SetEntityPose',
+        ],
         parameters=[{
             'config_file': os.path.join(jetrover_gazebo_share, 'config', 'gz_bridge.yaml'),
             'use_sim_time': True,
@@ -201,8 +204,18 @@ def generate_launch_description():
         arguments=['gripper_controller'],
         output='screen',
     )
+    grasp_attacher_node = Node(
+        package='jetrover_gazebo',
+        executable='grasp_attacher',
+        output='screen',
+        parameters=[{
+            'robot_model_name': LaunchConfiguration('robot_name'),
+            'use_sim_time': True,
+        }],
+    )
     # controller_manager lives inside the Gazebo process (gz_ros2_control), so
-    # only start the spawners once the entity has actually been created.
+    # only start the spawners and simulation attacher once the entity has
+    # actually been created.
     delayed_controller_spawners = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=spawn_node,
@@ -210,6 +223,7 @@ def generate_launch_description():
                 joint_state_broadcaster_spawner,
                 arm_controller_spawner,
                 gripper_controller_spawner,
+                grasp_attacher_node,
             ],
         )
     )

@@ -26,6 +26,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'grasp_attacher = jetrover_gazebo.grasp_attacher:main',
             'sim_launcher_gui = jetrover_gazebo.sim_launcher_gui:main',
         ],
     },

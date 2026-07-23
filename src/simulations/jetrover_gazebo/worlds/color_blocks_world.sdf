@@ -31,6 +31,10 @@
     <plugin filename="ignition-gazebo-physics-system" name="ignition::gazebo::systems::Physics"/>
     <plugin filename="ignition-gazebo-user-commands-system" name="ignition::gazebo::systems::UserCommands"/>
     <plugin filename="ignition-gazebo-scene-broadcaster-system" name="ignition::gazebo::systems::SceneBroadcaster"/>
+    <plugin filename="libjetrover-grasp-velocity-system.so" name="jetrover::gazebo::systems::GraspVelocitySystem">
+      <topic>/grasp/entity_command</topic>
+      <command_timeout>0.5</command_timeout>
+    </plugin>
     <plugin filename="ignition-gazebo-sensors-system" name="ignition::gazebo::systems::Sensors">
       <render_engine>ogre2</render_engine>
     </plugin>

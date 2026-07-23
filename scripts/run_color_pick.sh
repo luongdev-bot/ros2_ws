@@ -7,6 +7,13 @@
 #   Terminal 2: arm_motion_server  (serves PlayMotion from the .d6a library)
 #   Terminal 3: color_pick         (LAB detection -> PlayMotion goals)
 #
+# First run: provision the derived place groups used by color_pick.yaml:
+#   python3 ~/ros2_ws/scripts/provision_color_pick_release_groups.py
+# Re-teach and save a place_left/center/center1/right ORIGINAL in the arm
+# editor, then re-run with --force. Editor detent normalisation is expected:
+# the provisioner derives OPEN from the robot profile and changes only the
+# final step's gripper value; it does not look for a raw Servo6=400 pulse.
+#
 # If a simulation is ALREADY running, only terminals 2 and 3 are opened.
 #
 # NOTE: ROS setup files reference unset variables, so this script sources them
@@ -57,6 +64,39 @@ fi
 LIBRARY_DIR="${ARM_MOTION_LIBRARY_DIR:-$HOME/ActionGroups}"
 if [ ! -d "$LIBRARY_DIR" ]; then
   die "Action group library not found: $LIBRARY_DIR"
+fi
+
+RELEASE_GROUPS=(
+  place_left_release
+  place_center_release
+  place_center1_release
+  place_right_release
+)
+missing_groups=()
+for group in "${RELEASE_GROUPS[@]}"; do
+  group_path="$LIBRARY_DIR/$group.d6a"
+  if [ -L "$group_path" ]; then
+    die "Unsafe colour-pick action group: $group_path is a symlink.
+Remove it and regenerate the release groups with:
+  python3 $WS/scripts/provision_color_pick_release_groups.py --library-dir $LIBRARY_DIR --force"
+  fi
+  # `-ef` follows paths and compares file identity, avoiding non-portable
+  # realpath/readlink flags while also catching hard-link aliases.
+  for original_group in "${RELEASE_GROUPS[@]}"; do
+    original_path="$LIBRARY_DIR/${original_group%_release}.d6a"
+    if [ -e "$original_path" ] && [ "$group_path" -ef "$original_path" ]; then
+      die "Unsafe colour-pick action group: $group_path resolves to original action group $original_path.
+Remove it and regenerate the release groups with:
+  python3 $WS/scripts/provision_color_pick_release_groups.py --library-dir $LIBRARY_DIR --force"
+    fi
+  done
+  [ -f "$group_path" ] || missing_groups+=("$group.d6a")
+done
+if [ ${#missing_groups[@]} -ne 0 ]; then
+  missing_text=$(printf ' %s' "${missing_groups[@]}")
+  die "Colour-pick action groups are missing from $LIBRARY_DIR:$missing_text
+Provision them with:
+  python3 $WS/scripts/provision_color_pick_release_groups.py --library-dir $LIBRARY_DIR"
 fi
 
 command -v gnome-terminal >/dev/null || die "gnome-terminal is not installed."

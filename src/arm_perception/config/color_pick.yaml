@@ -28,11 +28,17 @@
 # So the intended demo is "put one block on the grasp point, the camera reads
 # its colour, the arm places it in the matching bin", one block at a time.
 #
-# PLACEHOLDER: the `place` groups below (place_left/center/center1/right) are
-# NOT yet taught to the four colour bins (bin_red/green/blue/yellow at
-# y = -0.46); place_center1 and place_right currently resolve to the same pose.
-# Re-teach one place group per bin with the arm editor, then point each colour
-# at its own, or the block will be dropped in the wrong place.
+# PLACEHOLDER: the groups in use below (place_left_release,
+# place_center_release, place_center1_release, place_right_release) are copies
+# of place_left/center/center1/right with only the final step's gripper set to
+# the profile's OPEN detent; they are NOT yet taught to the four bins
+# (bin_red/green/blue/yellow at y = -0.46). The center1/right originals
+# currently resolve to the same pose. Re-teach and save one ORIGINAL per bin
+# in the arm editor, then regenerate the `_release` copies with
+# `python3 ~/ros2_ws/scripts/provision_color_pick_release_groups.py --force`,
+# or editing the originals will have no effect on this dispatcher. It is okay
+# if the editor normalises every original gripper pulse to a detent: the
+# provisioner does not depend on a raw Servo6 value such as 400.
 
 # `min_area_px` / `max_area_px` bound the blob size, measured on the 320x240
 # processing frame (a 4 cm block is roughly 1400-1800 px there). The upper
@@ -54,7 +60,7 @@ colors:
     max_area_px: 6000
     motion: pick
     duration_ms: 0
-    place: place_left        # PLACEHOLDER - re-teach to bin_red
+    place: place_left_release        # PLACEHOLDER - re-teach to bin_red
     place_duration_ms: 0
 
   green:
@@ -64,7 +70,7 @@ colors:
     max_area_px: 6000
     motion: pick
     duration_ms: 0
-    place: place_center      # PLACEHOLDER - re-teach to bin_green
+    place: place_center_release      # PLACEHOLDER - re-teach to bin_green
     place_duration_ms: 0
 
   blue:
@@ -74,7 +80,7 @@ colors:
     max_area_px: 6000
     motion: pick
     duration_ms: 0
-    place: place_center1     # PLACEHOLDER - re-teach to bin_blue
+    place: place_center1_release     # PLACEHOLDER - re-teach to bin_blue
     place_duration_ms: 0
 
   yellow:
@@ -84,5 +90,5 @@ colors:
     max_area_px: 6000
     motion: pick
     duration_ms: 0
-    place: place_right       # PLACEHOLDER - re-teach to bin_yellow
+    place: place_right_release       # PLACEHOLDER - re-teach to bin_yellow
     place_duration_ms: 0

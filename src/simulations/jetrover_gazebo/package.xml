@@ -8,10 +8,16 @@
   <license>Apache-2.0</license>
 
   <depend>jetrover_description</depend>
+  <depend>jetrover_gazebo_plugins</depend>
   <depend>jetrover_moveit_config</depend>
   <depend>ros_gz_sim</depend>
   <depend>ros_gz_bridge</depend>
+  <depend>ros_gz_interfaces</depend>
+  <depend>rclpy</depend>
   <depend>robot_state_publisher</depend>
+  <depend>sensor_msgs</depend>
+  <depend>tf2_msgs</depend>
+  <depend>tf2_ros</depend>
   <depend>xacro</depend>
   <depend>controller_manager</depend>
   <depend>gz_ros2_control</depend>
