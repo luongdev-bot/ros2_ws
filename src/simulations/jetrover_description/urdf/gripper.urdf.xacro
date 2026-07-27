@@ -12,10 +12,10 @@
         value="0.00206265647704866" />
       <inertia
         ixx="3.97215843669342E-07"
-        ixy="-2.75699120579387E-10"
-        ixz="-2.19901048536124E-09"
+        ixy="0"
+        ixz="0"
         iyy="3.22472627342115E-07"
-        iyz="1.07303783544668E-08"
+        iyz="0"
         izz="7.78708186672131E-08" />
     </inertial>
     <visual>
@@ -362,14 +362,20 @@
       offset="0" />
   </joint>
 
-  <!-- Grip friction. The jaw links had no surface friction, so even when the
-       fingers close on a block (mu 1.2, 50 g) it slid straight out. High mu on
-       the contacting jaw faces lets the closed gripper actually carry it.
-       NOTE: Gazebo friction grasping is force-sensitive - if a block still
-       slips after this, the grip force (r_joint closed target / effort) needs
-       tuning, or use a detachable-joint attacher. -->
+  <!-- The gripper is intentionally non-colliding in gz physics because grasping is
+       kinematic (grasp_attacher + grasp_velocity_system). Collision geometry remains
+       available to MoveIt for planning and self-collision. Zeroing the contact bitmask
+       prevents tiny-inertia gripper-to-block contact from destabilising the LCP solver
+       and collapsing real-time factor. -->
   <xacro:macro name="jaw_friction" params="link">
     <gazebo reference="${link}">
+      <collision>
+        <surface>
+          <contact>
+            <collide_bitmask>0x00</collide_bitmask>
+          </contact>
+        </surface>
+      </collision>
       <mu1>2.0</mu1>
       <mu2>2.0</mu2>
     </gazebo>

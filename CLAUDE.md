@@ -65,6 +65,7 @@ cwd: <thư mục đang làm việc thật>   # ros2_ws, hoặc worktree ở bư�
 model: gpt-5.6-sol
 sandbox: workspace-write
 approval-policy: never
+config: { model_reasoning_effort: xhigh }
 ```
 
 `sandbox: workspace-write` cho Codex quyền **sửa và xoá file thật**, và
@@ -81,6 +82,12 @@ review.
 
 Chọn model theo việc: `gpt-5.6-sol` cho task thường. Mặc định trong
 `~/.codex/config.toml` chỉ áp dụng khi không truyền `model`.
+
+**Luôn để Codex suy nghĩ ở mức cao nhất — `xhigh`.** Truyền
+`config: { model_reasoning_effort: xhigh }` trong mọi lời gọi MCP (cả
+giao việc lẫn review), và `-c model_reasoning_effort=xhigh` cho lệnh CLI.
+Ghi cứng ở đây để không phụ thuộc vào `config.toml` — file đó có thể bị
+đổi, và `codex review` còn dùng mặc định riêng (`high`) thấp hơn.
 
 ### Bước 3 — Đọc lại những gì Codex đã thay đổi
 
@@ -133,6 +140,7 @@ prompt: >-
 cwd: <cùng thư mục đã giao việc>     # phải khớp bước 2
 sandbox: read-only
 approval-policy: never
+config: { model_reasoning_effort: xhigh }
 ```
 
 Tool trả kèm `threadId`; dùng `codex-reply` với threadId đó để hỏi tiếp
@@ -141,10 +149,11 @@ trong cùng phiên thay vì mở phiên mới.
 Hoặc dùng CLI:
 
 ```bash
-codex review --uncommitted        # thay đổi chưa commit
-codex review --commit 66033de     # đúng một commit
-codex review --base master        # diff so với nhánh gốc (repo này: master)
-codex review 'Focus on bugs'      # prompt tự do, KHÔNG kèm flag nào
+# thêm -c model_reasoning_effort=xhigh vào mọi lệnh dưới đây
+codex review --uncommitted -c model_reasoning_effort=xhigh   # thay đổi chưa commit
+codex review --commit 66033de -c model_reasoning_effort=xhigh # đúng một commit
+codex review --base master -c model_reasoning_effort=xhigh    # diff so với nhánh gốc (repo này: master)
+codex review -c model_reasoning_effort=xhigh 'Focus on bugs'  # prompt tự do, KHÔNG kèm flag định phạm vi
 ```
 
 Ba flag trên **xung khắc với prompt vị trí** — `codex review --uncommitted
