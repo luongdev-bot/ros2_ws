@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Put a "Colour Block Pick" launcher on the Desktop and in the app menu.
+# Put a "Colour Sort (mobile IK)" launcher on the Desktop and in the app menu.
 #
 # Usage:  ./install_color_pick_shortcut.sh [workspace_dir]
 
 set -euo pipefail
 
 WORKSPACE="${1:-${ARM_MOTION_WS:-$HOME/ros2_ws}}"
-LAUNCHER="${WORKSPACE}/scripts/run_color_pick.sh"
+LAUNCHER="${WORKSPACE}/scripts/run_color_sort.sh"
 
 if [[ ! -f "${LAUNCHER}" ]]; then
   echo "Launcher not found: ${LAUNCHER}" >&2
@@ -30,9 +30,9 @@ cat >"${ENTRY}" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=Colour Block Pick
-Comment=See a coloured block in Gazebo and play the matching arm action group
-Exec=${LAUNCHER}
+Name=Colour Sort (mobile IK)
+Comment=Robot drives to each coloured block, grasps it with IK, and sorts it into the matching bin
+Exec=${LAUNCHER} auto_grasp:=true
 Path=${WORKSPACE}
 Terminal=false
 Categories=Development;Robotics;

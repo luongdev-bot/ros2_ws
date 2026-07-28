@@ -80,6 +80,30 @@ def test_reachable_blocks_have_strict_top_down_solutions(block_position):
     assert np.linalg.norm(reached_pose[:3, 2] - _DOWNWARD_AXIS) < 0.05
 
 
+def test_blue_block_regularization_prefers_a_natural_top_down_posture():
+    """Regularization must retain accuracy while preferring natural joints."""
+    poses = top_down_grasp_poses([0.025, -0.245, 0.085])
+    rest_posture = np.array([1.57, 1.25, 0.70, 1.20, 0.0])
+
+    unregularized = best_ik_for_poses(
+        poses,
+        q0=_IK_INITIAL_JOINTS,
+    )
+    regularized = best_ik_for_poses(
+        poses,
+        q0=_IK_INITIAL_JOINTS,
+        rest_posture=rest_posture,
+    )
+
+    assert unregularized is not None
+    assert regularized is not None
+    assert regularized['position_error'] < 3e-3
+    assert (
+        np.linalg.norm(regularized['q'] - rest_posture)
+        < np.linalg.norm(unregularized['q'] - rest_posture)
+    )
+
+
 def test_red_block_documents_strict_vertical_workspace_limit():
     """The red simulation block is outside the strict top-down workspace."""
     red_block_position = np.array([-0.135, -0.245, 0.085])

@@ -10,8 +10,8 @@
 
   All four blocks and all four bins are inside the position-only IK reachable
   zone. The blocks are 3 cm cubes and are NOT static, so a pick (or a mouse
-  drag in the GUI) actually moves them. The bins are static, flat plates used
-  as place targets.
+  drag in the GUI) actually moves them. The bins are static, shallow open boxes
+  used as place targets.
 
   Lighting is deliberately brighter and less directional than
   jetrover_world.sdf: LAB thresholding degrades badly under hard shadows,
@@ -33,7 +33,7 @@
     <plugin filename="ignition-gazebo-scene-broadcaster-system" name="ignition::gazebo::systems::SceneBroadcaster"/>
     <plugin filename="libjetrover-grasp-velocity-system.so" name="jetrover::gazebo::systems::GraspVelocitySystem">
       <topic>/grasp/entity_command</topic>
-      <command_timeout>0.5</command_timeout>
+      <command_timeout>0.2</command_timeout>
     </plugin>
     <plugin filename="ignition-gazebo-sensors-system" name="ignition::gazebo::systems::Sensors">
       <render_engine>ogre2</render_engine>
@@ -244,17 +244,67 @@
       </link>
     </model>
 
-    <!-- ============ sorting bins (static place targets, 8 cm plates) ======= -->
+    <!-- ============ sorting bins (static place targets, shallow open boxes) -->
 
     <model name="bin_red">
       <static>true</static>
       <pose>-0.135 -0.32 0.002 0 0 0</pose>
       <link name="link">
-        <collision name="collision">
+        <!-- 9 cm square floor, 4 mm thick, centred at the bin pose -->
+        <collision name="floor_collision">
           <geometry><box><size>0.09 0.09 0.004</size></box></geometry>
         </collision>
-        <visual name="visual">
+        <visual name="floor_visual">
           <geometry><box><size>0.09 0.09 0.004</size></box></geometry>
+          <material>
+            <ambient>0.75 0.05 0.05 1</ambient>
+            <diffuse>0.85 0.06 0.06 1</diffuse>
+          </material>
+        </visual>
+        <!-- Four 4 cm-high, 4 mm-thick walls; inner opening is 8.2 cm square -->
+        <collision name="wall_front_collision">
+          <pose>0 -0.043 0.022 0 0 0</pose>
+          <geometry><box><size>0.09 0.004 0.04</size></box></geometry>
+        </collision>
+        <visual name="wall_front_visual">
+          <pose>0 -0.043 0.022 0 0 0</pose>
+          <geometry><box><size>0.09 0.004 0.04</size></box></geometry>
+          <material>
+            <ambient>0.75 0.05 0.05 1</ambient>
+            <diffuse>0.85 0.06 0.06 1</diffuse>
+          </material>
+        </visual>
+        <collision name="wall_back_collision">
+          <pose>0 0.043 0.022 0 0 0</pose>
+          <geometry><box><size>0.09 0.004 0.04</size></box></geometry>
+        </collision>
+        <visual name="wall_back_visual">
+          <pose>0 0.043 0.022 0 0 0</pose>
+          <geometry><box><size>0.09 0.004 0.04</size></box></geometry>
+          <material>
+            <ambient>0.75 0.05 0.05 1</ambient>
+            <diffuse>0.85 0.06 0.06 1</diffuse>
+          </material>
+        </visual>
+        <collision name="wall_left_collision">
+          <pose>-0.043 0 0.022 0 0 0</pose>
+          <geometry><box><size>0.004 0.082 0.04</size></box></geometry>
+        </collision>
+        <visual name="wall_left_visual">
+          <pose>-0.043 0 0.022 0 0 0</pose>
+          <geometry><box><size>0.004 0.082 0.04</size></box></geometry>
+          <material>
+            <ambient>0.75 0.05 0.05 1</ambient>
+            <diffuse>0.85 0.06 0.06 1</diffuse>
+          </material>
+        </visual>
+        <collision name="wall_right_collision">
+          <pose>0.043 0 0.022 0 0 0</pose>
+          <geometry><box><size>0.004 0.082 0.04</size></box></geometry>
+        </collision>
+        <visual name="wall_right_visual">
+          <pose>0.043 0 0.022 0 0 0</pose>
+          <geometry><box><size>0.004 0.082 0.04</size></box></geometry>
           <material>
             <ambient>0.75 0.05 0.05 1</ambient>
             <diffuse>0.85 0.06 0.06 1</diffuse>
@@ -267,11 +317,61 @@
       <static>true</static>
       <pose>-0.055 -0.32 0.002 0 0 0</pose>
       <link name="link">
-        <collision name="collision">
+        <!-- 9 cm square floor, 4 mm thick, centred at the bin pose -->
+        <collision name="floor_collision">
           <geometry><box><size>0.09 0.09 0.004</size></box></geometry>
         </collision>
-        <visual name="visual">
+        <visual name="floor_visual">
           <geometry><box><size>0.09 0.09 0.004</size></box></geometry>
+          <material>
+            <ambient>0.05 0.65 0.10 1</ambient>
+            <diffuse>0.06 0.75 0.12 1</diffuse>
+          </material>
+        </visual>
+        <!-- Four 4 cm-high, 4 mm-thick walls; inner opening is 8.2 cm square -->
+        <collision name="wall_front_collision">
+          <pose>0 -0.043 0.022 0 0 0</pose>
+          <geometry><box><size>0.09 0.004 0.04</size></box></geometry>
+        </collision>
+        <visual name="wall_front_visual">
+          <pose>0 -0.043 0.022 0 0 0</pose>
+          <geometry><box><size>0.09 0.004 0.04</size></box></geometry>
+          <material>
+            <ambient>0.05 0.65 0.10 1</ambient>
+            <diffuse>0.06 0.75 0.12 1</diffuse>
+          </material>
+        </visual>
+        <collision name="wall_back_collision">
+          <pose>0 0.043 0.022 0 0 0</pose>
+          <geometry><box><size>0.09 0.004 0.04</size></box></geometry>
+        </collision>
+        <visual name="wall_back_visual">
+          <pose>0 0.043 0.022 0 0 0</pose>
+          <geometry><box><size>0.09 0.004 0.04</size></box></geometry>
+          <material>
+            <ambient>0.05 0.65 0.10 1</ambient>
+            <diffuse>0.06 0.75 0.12 1</diffuse>
+          </material>
+        </visual>
+        <collision name="wall_left_collision">
+          <pose>-0.043 0 0.022 0 0 0</pose>
+          <geometry><box><size>0.004 0.082 0.04</size></box></geometry>
+        </collision>
+        <visual name="wall_left_visual">
+          <pose>-0.043 0 0.022 0 0 0</pose>
+          <geometry><box><size>0.004 0.082 0.04</size></box></geometry>
+          <material>
+            <ambient>0.05 0.65 0.10 1</ambient>
+            <diffuse>0.06 0.75 0.12 1</diffuse>
+          </material>
+        </visual>
+        <collision name="wall_right_collision">
+          <pose>0.043 0 0.022 0 0 0</pose>
+          <geometry><box><size>0.004 0.082 0.04</size></box></geometry>
+        </collision>
+        <visual name="wall_right_visual">
+          <pose>0.043 0 0.022 0 0 0</pose>
+          <geometry><box><size>0.004 0.082 0.04</size></box></geometry>
           <material>
             <ambient>0.05 0.65 0.10 1</ambient>
             <diffuse>0.06 0.75 0.12 1</diffuse>
@@ -284,11 +384,61 @@
       <static>true</static>
       <pose>0.025 -0.32 0.002 0 0 0</pose>
       <link name="link">
-        <collision name="collision">
+        <!-- 9 cm square floor, 4 mm thick, centred at the bin pose -->
+        <collision name="floor_collision">
           <geometry><box><size>0.09 0.09 0.004</size></box></geometry>
         </collision>
-        <visual name="visual">
+        <visual name="floor_visual">
           <geometry><box><size>0.09 0.09 0.004</size></box></geometry>
+          <material>
+            <ambient>0.05 0.10 0.75 1</ambient>
+            <diffuse>0.06 0.12 0.85 1</diffuse>
+          </material>
+        </visual>
+        <!-- Four 4 cm-high, 4 mm-thick walls; inner opening is 8.2 cm square -->
+        <collision name="wall_front_collision">
+          <pose>0 -0.043 0.022 0 0 0</pose>
+          <geometry><box><size>0.09 0.004 0.04</size></box></geometry>
+        </collision>
+        <visual name="wall_front_visual">
+          <pose>0 -0.043 0.022 0 0 0</pose>
+          <geometry><box><size>0.09 0.004 0.04</size></box></geometry>
+          <material>
+            <ambient>0.05 0.10 0.75 1</ambient>
+            <diffuse>0.06 0.12 0.85 1</diffuse>
+          </material>
+        </visual>
+        <collision name="wall_back_collision">
+          <pose>0 0.043 0.022 0 0 0</pose>
+          <geometry><box><size>0.09 0.004 0.04</size></box></geometry>
+        </collision>
+        <visual name="wall_back_visual">
+          <pose>0 0.043 0.022 0 0 0</pose>
+          <geometry><box><size>0.09 0.004 0.04</size></box></geometry>
+          <material>
+            <ambient>0.05 0.10 0.75 1</ambient>
+            <diffuse>0.06 0.12 0.85 1</diffuse>
+          </material>
+        </visual>
+        <collision name="wall_left_collision">
+          <pose>-0.043 0 0.022 0 0 0</pose>
+          <geometry><box><size>0.004 0.082 0.04</size></box></geometry>
+        </collision>
+        <visual name="wall_left_visual">
+          <pose>-0.043 0 0.022 0 0 0</pose>
+          <geometry><box><size>0.004 0.082 0.04</size></box></geometry>
+          <material>
+            <ambient>0.05 0.10 0.75 1</ambient>
+            <diffuse>0.06 0.12 0.85 1</diffuse>
+          </material>
+        </visual>
+        <collision name="wall_right_collision">
+          <pose>0.043 0 0.022 0 0 0</pose>
+          <geometry><box><size>0.004 0.082 0.04</size></box></geometry>
+        </collision>
+        <visual name="wall_right_visual">
+          <pose>0.043 0 0.022 0 0 0</pose>
+          <geometry><box><size>0.004 0.082 0.04</size></box></geometry>
           <material>
             <ambient>0.05 0.10 0.75 1</ambient>
             <diffuse>0.06 0.12 0.85 1</diffuse>
@@ -301,11 +451,61 @@
       <static>true</static>
       <pose>0.105 -0.32 0.002 0 0 0</pose>
       <link name="link">
-        <collision name="collision">
+        <!-- 9 cm square floor, 4 mm thick, centred at the bin pose -->
+        <collision name="floor_collision">
           <geometry><box><size>0.09 0.09 0.004</size></box></geometry>
         </collision>
-        <visual name="visual">
+        <visual name="floor_visual">
           <geometry><box><size>0.09 0.09 0.004</size></box></geometry>
+          <material>
+            <ambient>0.80 0.70 0.05 1</ambient>
+            <diffuse>0.90 0.80 0.06 1</diffuse>
+          </material>
+        </visual>
+        <!-- Four 4 cm-high, 4 mm-thick walls; inner opening is 8.2 cm square -->
+        <collision name="wall_front_collision">
+          <pose>0 -0.043 0.022 0 0 0</pose>
+          <geometry><box><size>0.09 0.004 0.04</size></box></geometry>
+        </collision>
+        <visual name="wall_front_visual">
+          <pose>0 -0.043 0.022 0 0 0</pose>
+          <geometry><box><size>0.09 0.004 0.04</size></box></geometry>
+          <material>
+            <ambient>0.80 0.70 0.05 1</ambient>
+            <diffuse>0.90 0.80 0.06 1</diffuse>
+          </material>
+        </visual>
+        <collision name="wall_back_collision">
+          <pose>0 0.043 0.022 0 0 0</pose>
+          <geometry><box><size>0.09 0.004 0.04</size></box></geometry>
+        </collision>
+        <visual name="wall_back_visual">
+          <pose>0 0.043 0.022 0 0 0</pose>
+          <geometry><box><size>0.09 0.004 0.04</size></box></geometry>
+          <material>
+            <ambient>0.80 0.70 0.05 1</ambient>
+            <diffuse>0.90 0.80 0.06 1</diffuse>
+          </material>
+        </visual>
+        <collision name="wall_left_collision">
+          <pose>-0.043 0 0.022 0 0 0</pose>
+          <geometry><box><size>0.004 0.082 0.04</size></box></geometry>
+        </collision>
+        <visual name="wall_left_visual">
+          <pose>-0.043 0 0.022 0 0 0</pose>
+          <geometry><box><size>0.004 0.082 0.04</size></box></geometry>
+          <material>
+            <ambient>0.80 0.70 0.05 1</ambient>
+            <diffuse>0.90 0.80 0.06 1</diffuse>
+          </material>
+        </visual>
+        <collision name="wall_right_collision">
+          <pose>0.043 0 0.022 0 0 0</pose>
+          <geometry><box><size>0.004 0.082 0.04</size></box></geometry>
+        </collision>
+        <visual name="wall_right_visual">
+          <pose>0.043 0 0.022 0 0 0</pose>
+          <geometry><box><size>0.004 0.082 0.04</size></box></geometry>
           <material>
             <ambient>0.80 0.70 0.05 1</ambient>
             <diffuse>0.90 0.80 0.06 1</diffuse>

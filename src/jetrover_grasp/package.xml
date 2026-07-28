@@ -21,6 +21,7 @@
   <exec_depend>vision_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>tf2_geometry_msgs</exec_depend>
   <exec_depend>cv_bridge</exec_depend>
@@ -28,6 +29,7 @@
   <exec_depend>jetrover_kinematics</exec_depend>
   <exec_depend>jetrover_gazebo</exec_depend>
   <exec_depend>arm_perception</exec_depend>
+  <exec_depend>rqt_image_view</exec_depend>
 
   <test_depend>ament_flake8</test_depend>
   <test_depend>python3-pytest</test_depend>

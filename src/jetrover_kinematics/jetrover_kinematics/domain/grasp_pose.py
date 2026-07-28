@@ -48,12 +48,15 @@ def top_down_grasp_poses(block_xyz, z_offset=0.0, n_rotations=4):
 def best_ik_for_poses(
         target_poses,
         q0=None,
+        rest_posture=None,
         position_error_threshold=0.02,
         orientation_tol=0.05):
-    """Return the lowest-error tolerance-qualified IK result, or ``None``.
+    """Return the best tolerance-qualified IK result, or ``None``.
 
     Acceptance uses the raw position and orientation errors, independently of
-    the inverse solver's internal position-success tolerance.
+    the inverse solver's internal position-success tolerance. A supplied rest
+    posture ranks qualified poses by joint-space distance; otherwise the raw
+    position error is used.
     """
     threshold = float(position_error_threshold)
     if not np.isfinite(threshold) or threshold <= 0.0:
@@ -67,6 +70,7 @@ def best_ik_for_poses(
         raise ValueError('orientation_tol must be finite and positive')
 
     best_result = None
+    best_result_key = None
     for pose_index, target_pose in enumerate(target_poses):
         pose = np.asarray(target_pose, dtype=float)
         if pose.shape != (4, 4):
@@ -79,6 +83,7 @@ def best_ik_for_poses(
             q0=q0,
             target_rotation=pose[:3, :3],
             orientation_tol=orientation_tolerance,
+            rest_posture=rest_posture,
         )
         if result['position_error'] >= threshold:
             continue
@@ -87,10 +92,16 @@ def best_ik_for_poses(
 
         result = dict(result)
         result['pose_index'] = pose_index
-        if (
-                best_result is None
-                or result['position_error'] < best_result['position_error']):
+        if rest_posture is None:
+            result_key = (result['position_error'],)
+        else:
+            posture_distance = float(np.linalg.norm(
+                result['q'] - np.asarray(rest_posture, dtype=float)
+            ))
+            result_key = (posture_distance, result['position_error'])
+        if best_result_key is None or result_key < best_result_key:
             best_result = result
+            best_result_key = result_key
     return best_result
 
 

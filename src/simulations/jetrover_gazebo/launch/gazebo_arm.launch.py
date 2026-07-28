@@ -186,6 +186,17 @@ def generate_launch_description():
         }],
     )
 
+    ros_gz_cmd_bridge = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        output='screen',
+        arguments=[
+            '/cmd_vel@geometry_msgs/msg/Twist]ignition.msgs.Twist',
+            '/grasp/entity_command@ros_gz_interfaces/msg/Entity]ignition.msgs.Entity',
+        ],
+        parameters=[{'use_sim_time': True}],
+    )
+
     joint_state_broadcaster_spawner = Node(
         package='controller_manager',
         executable='spawner',
@@ -245,6 +256,7 @@ def generate_launch_description():
         robot_state_publisher_node,
         spawn_node,
         bridge_node,
+        ros_gz_cmd_bridge,
         depth_cam_frame_bridge,
         lidar_frame_bridge,
         delayed_controller_spawners,

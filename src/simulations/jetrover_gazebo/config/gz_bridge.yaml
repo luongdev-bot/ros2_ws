@@ -8,12 +8,6 @@
   gz_type_name: "ignition.msgs.Clock"
   direction: GZ_TO_ROS
 
-- ros_topic_name: "/cmd_vel"
-  gz_topic_name: "/cmd_vel"
-  ros_type_name: "geometry_msgs/msg/Twist"
-  gz_type_name: "ignition.msgs.Twist"
-  direction: ROS_TO_GZ
-
 - ros_topic_name: "/odom"
   gz_topic_name: "/odom"
   ros_type_name: "nav_msgs/msg/Odometry"
@@ -44,16 +38,9 @@
   publisher_queue: 1
   lazy: true
 
-# The Fortress SetEntityPose service does not touch velocity. A small world
-# system consumes this held/released state and applies one-step zero-velocity
-# commands at physics rate while a block is held.
-- ros_topic_name: "/grasp/entity_command"
-  gz_topic_name: "/grasp/entity_command"
-  ros_type_name: "ros_gz_interfaces/msg/Entity"
-  gz_type_name: "ignition.msgs.Entity"
-  direction: ROS_TO_GZ
-  subscriber_queue: 1
-  publisher_queue: 1
+# The /grasp/entity_command ROS_TO_GZ bridge is declared positionally in
+# gazebo_arm.launch.py because this ros_gz_bridge version ignores its YAML
+# direction when the bridge also has positional arguments.
 
 - ros_topic_name: "/scan"
   gz_topic_name: "/scan"
