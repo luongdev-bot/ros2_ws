@@ -49,6 +49,20 @@ nghĩa là Codex còn chạy hoặc cửa sổ lỗi — không phải sạch l�
 Prompt đặt trong ngoặc kép của lệnh `codex`; tránh dấu nháy đơn `'` trong
 prompt vì nó cắt chuỗi single-quote của `bash -lc`.
 
+**Hai cạm bẫy đã gặp thật khi dùng mẫu này với `codex review`:**
+
+- `codex review | tee` không cho findings gọn — khi stdout không phải
+  TTY, nó đổ ra JSONL session thô, rất khó bới lại khối nhận xét. Đọc
+  findings ngay trong **cửa sổ** (đó là TTY, hiện đẹp), hoặc bọc bằng
+  `script -q -c '<lệnh codex review>' /tmp/codex-<việc>.log` để vừa giữ
+  TTY vừa lưu file. `codex exec` thì `| tee` bình thường.
+- **Thoát mà không có findings ≠ sạch lỗi.** Nếu diff review đụng tới
+  chủ đề file hệ thống (ví dụ chính `~/.codex/sessions/*.jsonl`), review
+  agent hay bò sang đọc mớ đó rồi hết budget, thoát mà chưa kịp nhận
+  xét — `[[CODEX_DONE]]` vẫn nổ. Phải xác nhận log THỰC SỰ có khối
+  findings; nếu không thì coi là review lỗi, chạy lại và nêu rõ trong
+  prompt "chỉ đọc diff, không đọc file ngoài repo".
+
 ### Bước 1 — Chuẩn bị chỗ làm việc
 
 Cần một mốc git sạch để tách được thay đổi của Codex ra khỏi phần khác.
