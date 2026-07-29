@@ -17,6 +17,38 @@ là đang viết thay vì giao, kèm lý do.
 
 Ngay cả khi tự viết, bước đọc lại và review ở dưới vẫn áp dụng.
 
+### Chạy Codex — luôn mở terminal mới, KHÔNG chạy ngầm
+
+Mọi lần gọi Codex (giao việc lẫn review) **phải chạy trong một cửa sổ
+`gnome-terminal` mới**, bằng lệnh CLI `codex`. Tuyệt đối không chạy ngầm:
+không dùng MCP tool `mcp__codex-cli__codex`, không `run_in_background`.
+
+**Lý do:** mỗi lần chạy tạo một session hiển thị được và resume được, lưu
+ở `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`. Sau này khi cần đưa ra
+lịch sử trò chuyện với Codex (ví dụ người phỏng vấn yêu cầu), mở lại bằng
+`codex resume --last` (hoặc `codex exec resume --last`), hoặc nộp thẳng
+file `.jsonl` đó. Chạy ngầm không để lại lịch sử xem được.
+
+Mẫu bọc lệnh — cửa sổ tự giữ mở (`exec bash`) để xem và resume; output
+vừa hiện trên màn hình vừa ghi ra `/tmp` để Claude đọc lại:
+
+```bash
+gnome-terminal --title="codex: <việc>" -- bash -lc '
+cd <thư mục làm việc>
+<lệnh codex đầy đủ> 2>&1 | tee /tmp/codex-<việc>.log
+echo "[[CODEX_DONE]]" >> /tmp/codex-<việc>.log
+exec bash'
+```
+
+`gnome-terminal` trả về ngay và cửa sổ chạy độc lập, nên **Claude không
+tự nhận được output**. Claude phải đợi tới khi dòng `[[CODEX_DONE]]` xuất
+hiện trong `/tmp/codex-<việc>.log` rồi mới đọc file đó. Chưa thấy dấu này
+nghĩa là Codex còn chạy hoặc cửa sổ lỗi — không phải sạch lỗi, và không
+được báo hoàn thành.
+
+Prompt đặt trong ngoặc kép của lệnh `codex`; tránh dấu nháy đơn `'` trong
+prompt vì nó cắt chuỗi single-quote của `bash -lc`.
+
 ### Bước 1 — Chuẩn bị chỗ làm việc
 
 Cần một mốc git sạch để tách được thay đổi của Codex ra khỏi phần khác.
@@ -56,38 +88,42 @@ nhắc bỏ qua.
 
 ### Bước 2 — Giao việc cho Codex
 
-```yaml
-tool: mcp__codex-cli__codex
-prompt: >-
-  <mô tả nhiệm vụ thật cụ thể: sửa file nào, hành vi mong muốn,
-  ràng buộc kiến trúc, test phải qua>
-cwd: <thư mục đang làm việc thật>   # ros2_ws, hoặc worktree ở bước 1
-model: gpt-5.6-sol
-sandbox: workspace-write
-approval-policy: never
-config: { model_reasoning_effort: xhigh }
+Giao việc bằng `codex exec` (non-interactive, tự chạy) trong terminal mới
+theo đúng mẫu bọc lệnh ở trên:
+
+```bash
+gnome-terminal --title="codex: fix-detector" -- bash -lc '
+cd /home/luong/ros2_ws
+codex exec --sandbox workspace-write -m gpt-5.6-sol \
+  -c model_reasoning_effort=xhigh \
+  "<mô tả nhiệm vụ thật cụ thể: sửa file nào, hành vi mong muốn, ràng buộc kiến trúc, test phải qua>" \
+  2>&1 | tee /tmp/codex-fix-detector.log
+echo "[[CODEX_DONE]]" >> /tmp/codex-fix-detector.log
+exec bash'
 ```
 
-`sandbox: workspace-write` cho Codex quyền **sửa và xoá file thật**, và
-`approval-policy: never` nghĩa là không có bước xác nhận nào — kể cả
-`on-request` cũng do model tự quyết lúc nào hỏi, không phải bảo đảm.
+Đổi `cd /home/luong/ros2_ws` sang worktree ở bước 1 nếu có. `codex exec`
+chạy autonomous, không có bước xác nhận; nếu nó khựng lại thì thấy ngay
+trong cửa sổ.
+
+`--sandbox workspace-write` cho Codex quyền **sửa và xoá file thật**.
 Không có cấu hình nào ngăn được Codex đụng file ngoài phạm vi. Thứ thật
 sự giới hạn thiệt hại là **chọn đúng thư mục làm việc và đúng sandbox**;
 git chỉ giúp *phát hiện và khôi phục* thay đổi trên file đã track — nó
 không cứu được file bị ignore hay file ngoài repo. Điều kiện để được
 giao việc: **worktree riêng** nếu việc đó có thể đụng file bị ignore
 (build artifact, `install/`, config cục bộ); chỉ khi chắc chắn không
-đụng thì mới được giao trên tree sạch. Luôn quay về `read-only` khi
-review.
+đụng thì mới được giao trên tree sạch. Luôn dùng `--sandbox read-only`
+khi review.
 
 Chọn model theo việc: `gpt-5.6-sol` cho task thường. Mặc định trong
 `~/.codex/config.toml` chỉ áp dụng khi không truyền `model`.
 
-**Luôn để Codex suy nghĩ ở mức cao nhất — `xhigh`.** Truyền
-`config: { model_reasoning_effort: xhigh }` trong mọi lời gọi MCP (cả
-giao việc lẫn review), và `-c model_reasoning_effort=xhigh` cho lệnh CLI.
-Ghi cứng ở đây để không phụ thuộc vào `config.toml` — file đó có thể bị
-đổi, và `codex review` còn dùng mặc định riêng (`high`) thấp hơn.
+**Luôn để Codex suy nghĩ ở mức cao nhất — `xhigh`.** Thêm
+`-c model_reasoning_effort=xhigh` vào mọi lệnh `codex` (cả `exec` lẫn
+`review`). Ghi cứng ở đây để không phụ thuộc vào `config.toml` — file đó
+có thể bị đổi, và `codex review` còn dùng mặc định riêng (`high`) thấp
+hơn. Header phiên chạy sẽ in `reasoning effort: xhigh` để kiểm.
 
 ### Bước 3 — Đọc lại những gì Codex đã thay đổi
 
@@ -127,38 +163,35 @@ trong system.
 
 ### Bước 4 — Chấm điểm và review
 
-Claude tự đánh giá diff trước. Cần ý kiến thứ hai thì gọi Codex ở chế độ
-read-only:
-
-```yaml
-tool: mcp__codex-cli__codex
-prompt: >-
-  Review all uncommitted changes. Inspect `git status --short`,
-  `git diff`, `git diff --cached`, and any untracked files. Report
-  bugs and design problems with file:line anchors.
-  Do not modify any files.
-cwd: <cùng thư mục đã giao việc>     # phải khớp bước 2
-sandbox: read-only
-approval-policy: never
-config: { model_reasoning_effort: xhigh }
-```
-
-Tool trả kèm `threadId`; dùng `codex-reply` với threadId đó để hỏi tiếp
-trong cùng phiên thay vì mở phiên mới.
-
-Hoặc dùng CLI:
+Claude tự đánh giá diff trước. Cần ý kiến thứ hai thì chạy `codex review`
+trong terminal mới (cũng theo mẫu bọc lệnh ở trên):
 
 ```bash
-# thêm -c model_reasoning_effort=xhigh vào mọi lệnh dưới đây
-codex review --uncommitted -c model_reasoning_effort=xhigh   # thay đổi chưa commit
-codex review --commit 66033de -c model_reasoning_effort=xhigh # đúng một commit
-codex review --base master -c model_reasoning_effort=xhigh    # diff so với nhánh gốc (repo này: master)
-codex review -c model_reasoning_effort=xhigh 'Focus on bugs'  # prompt tự do, KHÔNG kèm flag định phạm vi
+gnome-terminal --title="codex review" -- bash -lc '
+cd /home/luong/ros2_ws
+codex review --uncommitted -c model_reasoning_effort=xhigh \
+  2>&1 | tee /tmp/codex-review.log
+echo "[[CODEX_DONE]]" >> /tmp/codex-review.log
+exec bash'
 ```
 
-Ba flag trên **xung khắc với prompt vị trí** — `codex review --uncommitted
-'...'` báo `cannot be used with [PROMPT]`. Muốn hướng dẫn riêng thì dùng
-MCP tool, hoặc `codex review` với prompt đứng một mình.
+Các biến thể của `codex review` (thay `--uncommitted` trong lệnh trên):
+
+```bash
+codex review --uncommitted        # thay đổi chưa commit
+codex review --commit 66033de     # đúng một commit
+codex review --base master        # diff so với nhánh gốc (repo này: master)
+codex review 'Focus on bugs'      # prompt tự do, KHÔNG kèm flag định phạm vi
+```
+
+(luôn kèm `-c model_reasoning_effort=xhigh` như trong lệnh bọc trên.)
+
+Ba flag phạm vi **xung khắc với prompt vị trí** — `codex review
+--uncommitted 'Focus...'` báo `cannot be used with [PROMPT]`. Muốn hướng
+dẫn riêng thì để `codex review 'prompt'` đứng một mình.
+
+Hỏi tiếp trong cùng phiên review bằng `codex resume --last` trong chính
+cửa sổ đó, thay vì mở phiên mới.
 
 ### Vòng lặp bắt buộc
 
@@ -193,13 +226,11 @@ tính cả file chưa track, nên Codex sẽ review chính file output của nó
 lệnh bị cắt giữa chừng nghĩa là không có nhận xét nào, đừng hiểu nhầm là
 sạch lỗi.
 
-**Codex chạy trong sandbox riêng**, không thấy cấu hình MCP của Claude
-Code. Nếu bản thân lượt review chạy được nhưng *trong nội dung nhận xét*
-Codex nói server `codex-cli` không tồn tại hay không kết nối được, thì
-đó chỉ là chẩn đoán sai của nó — bỏ qua nhận xét đó, muốn chắc thì tự
-chạy `claude mcp list`. Ngược lại, nếu chính lời gọi review thất bại thì
-đó là review thất bại thật: phải báo người dùng và **không được** coi
-như đã review xong.
+**Đợi đúng dấu `[[CODEX_DONE]]` rồi mới đọc log.** Cửa sổ chạy độc lập
+nên Claude không tự biết Codex xong lúc nào; chưa thấy dấu này thì Codex
+còn chạy hoặc cửa sổ lỗi — không phải sạch lỗi. Nếu log cho thấy lệnh
+lỗi, hết quota, hay cửa sổ không mở được thì đó là review thất bại thật:
+phải báo người dùng và **không được** coi như đã review xong.
 
 Các agent trong `.claude/CLAUDE.md` (`ros2-style-reviewer`,
 `gz-style-reviewer`, …) là công cụ riêng cho review trước khi mở PR —
