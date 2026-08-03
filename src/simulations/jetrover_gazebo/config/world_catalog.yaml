@@ -30,6 +30,14 @@ worlds:
     slam_friendly: false
     fuel: false
 
+  - id: line_figure8_world
+    file: line_figure8_world.sdf
+    label: "Line-follow - sân hình số 8"
+    description: "Mặt phẳng trống với đường line hình số 8 để test line_follow, KHÔNG hợp để chạy SLAM."
+    spawn: {x: 1.5, y: 0.0, yaw: 1.5707963267948966}
+    slam_friendly: false
+    fuel: false
+
   - id: hospital
     file: hospital.sdf
     label: "Bệnh viện - hành lang 8 phòng"

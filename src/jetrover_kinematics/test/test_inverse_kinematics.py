@@ -111,6 +111,22 @@ def test_non_finite_target_position_raises():
         inverse_kinematics([np.inf, 0.0, BASE_HEIGHT])
 
 
+@pytest.mark.parametrize(
+    'rest_posture, message',
+    [
+        ([0.0] * 4, 'exactly five'),
+        ([0.0, 0.0, np.nan, 0.0, 0.0], 'only finite'),
+    ],
+)
+def test_invalid_rest_posture_raises(rest_posture, message):
+    """Posture regularization must reject malformed reference joints."""
+    with pytest.raises(ValueError, match=message):
+        inverse_kinematics(
+            [0.1, 0.0, BASE_HEIGHT],
+            rest_posture=rest_posture,
+        )
+
+
 def test_public_exports_are_importable():
     """Every declared top-level API export must resolve."""
     import jetrover_kinematics

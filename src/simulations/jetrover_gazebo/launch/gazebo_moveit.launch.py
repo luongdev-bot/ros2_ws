@@ -47,6 +47,9 @@ def generate_launch_description():
         default_value=os.path.join(jetrover_gazebo_share, 'worlds', 'jetrover_world.sdf'),
     )
     robot_name_arg = DeclareLaunchArgument('robot_name', default_value='jetrover')
+    spawn_x_arg = DeclareLaunchArgument('spawn_x', default_value='0')
+    spawn_y_arg = DeclareLaunchArgument('spawn_y', default_value='0')
+    spawn_yaw_arg = DeclareLaunchArgument('spawn_yaw', default_value='0')
 
     # Full robot description used for Gazebo: jetrover_sim.xacro (wheels +
     # sensors) plus the arm/gripper <ros2_control> block wired to
@@ -90,7 +93,10 @@ def generate_launch_description():
         arguments=[
             '-topic', 'robot_description',
             '-name', LaunchConfiguration('robot_name'),
-            '-x', '0', '-y', '0', '-z', '0.05',
+            '-x', LaunchConfiguration('spawn_x'),
+            '-y', LaunchConfiguration('spawn_y'),
+            '-z', '0.05',
+            '-Y', LaunchConfiguration('spawn_yaw'),
         ],
     )
 
@@ -111,17 +117,32 @@ def generate_launch_description():
         parameters=[{'use_sim_time': True}],
     )
 
-    bridge_node = Node(
+    # This ros_gz_bridge version does not reliably apply bridges from its YAML
+    # config when the same parameter_bridge process also receives positional
+    # bridge arguments. Keep the YAML GZ_TO_ROS topics (especially /clock) in
+    # their own process, and run the positional service/ROS_TO_GZ bridges in a
+    # separately named process.
+    yaml_bridge_node = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
+        name='ros_gz_bridge_yaml',
         output='screen',
-        arguments=[
-            '/world/color_blocks_world/set_pose@ros_gz_interfaces/srv/SetEntityPose',
-        ],
         parameters=[{
             'config_file': os.path.join(jetrover_gazebo_share, 'config', 'gz_bridge.yaml'),
             'use_sim_time': True,
         }],
+    )
+
+    positional_bridge_node = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        name='ros_gz_bridge_positional',
+        output='screen',
+        arguments=[
+            '/world/color_blocks_world/set_pose@ros_gz_interfaces/srv/SetEntityPose',
+            '/cmd_vel@geometry_msgs/msg/Twist]ignition.msgs.Twist',
+        ],
+        parameters=[{'use_sim_time': True}],
     )
 
     # gz_ros2_control hosts controller_manager inside the Gazebo process (see
@@ -194,10 +215,14 @@ def generate_launch_description():
         SetParameter(name='use_sim_time', value=True),
         world_arg,
         robot_name_arg,
+        spawn_x_arg,
+        spawn_y_arg,
+        spawn_yaw_arg,
         gz_sim,
         robot_state_publisher_node,
         spawn_node,
-        bridge_node,
+        yaml_bridge_node,
+        positional_bridge_node,
         depth_cam_frame_bridge,
         delayed_controller_spawners,
         move_group_launch,

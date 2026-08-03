@@ -5,6 +5,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, SetParameter
@@ -18,6 +19,16 @@ def generate_launch_description():
         "auto_grasp",
         default_value="false",
         description="Automatically start a cycle when a block is detected.",
+    )
+    mobile_enabled = DeclareLaunchArgument(
+        "mobile_enabled",
+        default_value="true",
+        description="Drive the mecanum base between blocks and bins.",
+    )
+    show_camera = DeclareLaunchArgument(
+        "show_camera",
+        default_value="true",
+        description="Show colour detections in rqt_image_view.",
     )
 
     gazebo = IncludeLaunchDescription(
@@ -58,6 +69,10 @@ def generate_launch_description():
                     LaunchConfiguration("auto_grasp"),
                     value_type=bool,
                 ),
+                "mobile_enabled": ParameterValue(
+                    LaunchConfiguration("mobile_enabled"),
+                    value_type=bool,
+                ),
                 "bin_red": [-0.135, -0.32, 0.02],
                 "bin_green": [-0.055, -0.32, 0.02],
                 "bin_blue": [0.025, -0.32, 0.02],
@@ -66,12 +81,22 @@ def generate_launch_description():
         ],
     )
 
+    camera_view = Node(
+        package="rqt_image_view",
+        executable="rqt_image_view",
+        arguments=["/color_pick/debug_image"],
+        condition=IfCondition(LaunchConfiguration("show_camera")),
+    )
+
     return LaunchDescription(
         [
             SetParameter(name="use_sim_time", value=True),
             auto_grasp,
+            mobile_enabled,
+            show_camera,
             gazebo,
             color_pick,
             grasp_executor,
+            camera_view,
         ]
     )

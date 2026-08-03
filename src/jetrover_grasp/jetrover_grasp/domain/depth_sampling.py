@@ -4,7 +4,7 @@ import numpy as np
 
 
 def sample_depth(depth_image, u, v, window=5) -> float | None:
-    """Return the median valid depth around a pixel, or ``None``.
+    """Return a nearest-surface robust depth around a pixel, or ``None``.
 
     ``depth_image`` must be two-dimensional and contain depths in metres.
     Invalid depths are non-finite or non-positive values.
@@ -48,4 +48,4 @@ def sample_depth(depth_image, u, v, window=5) -> float | None:
     valid_depths = patch[np.isfinite(patch) & (patch > 0)]
     if valid_depths.size == 0:
         return None
-    return float(np.median(valid_depths))
+    return float(np.percentile(valid_depths, 20))

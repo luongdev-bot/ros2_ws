@@ -6,7 +6,7 @@ import pytest
 from jetrover_grasp.domain.depth_sampling import sample_depth
 
 
-def test_patch_median_ignores_non_positive_and_non_finite_values():
+def test_patch_low_percentile_ignores_non_positive_and_non_finite_values():
     depth_image = np.full((5, 5), 50.0, dtype=np.float32)
     depth_image[1:4, 1:4] = [
         [0.0, np.nan, 1.0],
@@ -16,7 +16,28 @@ def test_patch_median_ignores_non_positive_and_non_finite_values():
 
     depth = sample_depth(depth_image, 2, 2, window=3)
 
-    assert depth == pytest.approx(4.0)
+    assert depth == pytest.approx(1.8)
+
+
+def test_patch_low_percentile_prefers_near_surface_over_far_background():
+    depth_image = np.array(
+        [
+            [0.30, 0.30, 0.30],
+            [0.10, 0.10, 0.10],
+            [0.30, 0.30, 0.30],
+        ],
+        dtype=np.float32,
+    )
+
+    depth = sample_depth(depth_image, 1, 1, window=3)
+
+    assert depth == pytest.approx(0.10)
+
+
+def test_all_equal_valid_depths_return_that_value():
+    depth_image = np.full((5, 5), 0.23, dtype=np.float32)
+
+    assert sample_depth(depth_image, 2, 2, window=3) == pytest.approx(0.23)
 
 
 def test_all_invalid_depths_return_none():

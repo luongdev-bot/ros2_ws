@@ -5,7 +5,9 @@ import pytest
 
 from jetrover_grasp.application.grasp_plan import (
     plan_is_reachable,
+    plan_pick,
     plan_pick_and_place,
+    plan_place,
 )
 from jetrover_kinematics import (
     JOINT_LIMITS_LOWER,
@@ -59,11 +61,17 @@ def test_reachable_blocks_have_complete_plans(block_xyz, bin_xyz):
 
     open_labels = {"home", "approach", "descend", "release"}
     close_labels = {"close", "lift", "to_bin"}
+    move_labels = {"home", "approach", "descend", "lift", "to_bin"}
+    grasp_labels = {"close", "release"}
     for waypoint in plan:
         if waypoint.label in open_labels:
             assert waypoint.gripper_position == -1.0
         if waypoint.label in close_labels:
             assert waypoint.gripper_position == 0.3
+        if waypoint.label in move_labels:
+            assert waypoint.settle_time_s == 3.0
+        if waypoint.label in grasp_labels:
+            assert waypoint.settle_time_s == 2.0
 
 
 def test_red_block_is_outside_the_known_outer_workspace():
@@ -74,6 +82,55 @@ def test_red_block_is_outside_the_known_outer_workspace():
     # limitation, even though the position-only place target is reachable.
     assert plan_pick_and_place(red_block, _BLUE_BIN) is None
     assert plan_is_reachable(red_block, _BLUE_BIN) is False
+
+
+def test_plan_pick_returns_only_pick_waypoints():
+    block = (0.025, -0.245, 0.085)
+
+    plan = plan_pick(block)
+
+    assert plan is not None
+    assert [waypoint.label for waypoint in plan] == [
+        "home",
+        "approach",
+        "descend",
+        "close",
+        "lift",
+    ]
+
+
+def test_plan_place_returns_only_place_waypoints():
+    plan = plan_place(_BLUE_BIN)
+
+    assert plan is not None
+    assert [waypoint.label for waypoint in plan] == [
+        "to_bin",
+        "release",
+        "home",
+    ]
+
+
+def test_plan_parts_compose_to_the_complete_plan_labels():
+    block = (0.025, -0.245, 0.085)
+
+    pick = plan_pick(block)
+    assert pick is not None
+    place = plan_place(
+        _BLUE_BIN,
+        q_seed=pick[-1].joint_positions,
+    )
+    complete = plan_pick_and_place(block, _BLUE_BIN)
+
+    assert place is not None
+    assert complete is not None
+    assert [waypoint.label for waypoint in pick + place] == _EXPECTED_LABELS
+    assert [waypoint.label for waypoint in complete] == _EXPECTED_LABELS
+
+
+def test_red_block_is_unreachable_via_plan_pick():
+    red_block = (-0.135, -0.245, 0.085)
+
+    assert plan_pick(red_block) is None
 
 
 @pytest.mark.parametrize(

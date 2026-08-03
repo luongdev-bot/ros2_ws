@@ -78,6 +78,22 @@ def _initial_joints(q0):
     return joints
 
 
+def _rest_joints(rest_posture):
+    if rest_posture is None:
+        return None
+
+    joints = np.asarray(rest_posture, dtype=float)
+    if joints.shape != (5,):
+        raise ValueError(
+            'rest_posture must contain exactly five joint angles'
+        )
+    if not np.all(np.isfinite(joints)):
+        raise ValueError(
+            'rest_posture must contain only finite joint angles'
+        )
+    return joints
+
+
 def _fallback_initial_joints(target_position, q5):
     """Yield radial-branch seeds with straight and bent elbow postures."""
     target_offset = target_position[:2] - JOINT1_TRANSLATION[:2]
@@ -122,15 +138,19 @@ def inverse_kinematics(
         target_rotation=None,
         orientation_weight=0.3,
         position_tol=2e-3,
-        orientation_tol=0.05):
+        orientation_tol=0.05,
+        rest_posture=None,
+        regularization_weight=0.02):
     """Solve for joint angles that reach a target position and orientation.
 
     ``target_rotation`` constrains the tool x- and z-axes and takes precedence
     over ``target_z_axis``. Supplying only ``target_z_axis`` retains the
-    position-plus-tool-axis behavior.
+    position-plus-tool-axis behavior. ``rest_posture`` adds a soft joint-space
+    preference without changing the FK-based geometric success criteria.
     """
     target = _vector(target_position, 'target_position')
     initial_joints = _initial_joints(q0)
+    rest_joints = _rest_joints(rest_posture)
 
     target_frame = None
     target_axis = None
@@ -142,6 +162,11 @@ def inverse_kinematics(
     weight = float(orientation_weight)
     if not np.isfinite(weight) or weight < 0.0:
         raise ValueError('orientation_weight must be finite and non-negative')
+    posture_weight = float(regularization_weight)
+    if not np.isfinite(posture_weight) or posture_weight < 0.0:
+        raise ValueError(
+            'regularization_weight must be finite and non-negative'
+        )
     position_tolerance = _positive_finite(position_tol, 'position_tol')
     orientation_tolerance = _positive_finite(
         orientation_tol,
@@ -151,22 +176,29 @@ def inverse_kinematics(
         target_frame is not None or target_axis is not None
     )
 
-    def residual(joints):
+    def geometric_residual(joints):
         pose = forward_kinematics(joints)
         position_residual = pose[:3, 3] - target
+        residuals = [position_residual]
         if target_frame is not None:
             orientation_residual = weight * (
                 pose[:3, (0, 2)] - target_frame[:, (0, 2)]
             ).ravel()
-            return np.concatenate((position_residual, orientation_residual))
-        if target_axis is not None:
+            residuals.append(orientation_residual)
+        elif target_axis is not None:
             orientation_residual = weight * (pose[:3, 2] - target_axis)
-            return np.concatenate((position_residual, orientation_residual))
-        return position_residual
+            residuals.append(orientation_residual)
+        return np.concatenate(residuals)
 
-    def solve(seed):
+    def residual(joints):
+        residuals = [geometric_residual(joints)]
+        if rest_joints is not None:
+            residuals.append(posture_weight * (joints - rest_joints))
+        return np.concatenate(residuals)
+
+    def solve(seed, objective=residual):
         return least_squares(
-            residual,
+            objective,
             seed,
             bounds=(JOINT_LIMITS_LOWER, JOINT_LIMITS_UPPER),
             xtol=1e-12,
@@ -230,6 +262,14 @@ def inverse_kinematics(
 
     result = min(candidates, key=candidate_key)
     position_error, orientation_error, success = metrics(result)
+    if rest_joints is not None and not success:
+        # The posture penalty selects a natural local branch. Polish only a
+        # tolerance-missing result on that branch so geometric accuracy remains
+        # authoritative rather than accepting the penalty's small compromise.
+        polished_result = solve(result.x, objective=geometric_residual)
+        if candidate_key(polished_result) < candidate_key(result):
+            result = polished_result
+            position_error, orientation_error, success = metrics(result)
 
     return {
         'q': result.x,

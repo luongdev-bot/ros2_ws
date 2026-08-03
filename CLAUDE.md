@@ -160,6 +160,20 @@ Ba flag trên **xung khắc với prompt vị trí** — `codex review --uncommi
 '...'` báo `cannot be used with [PROMPT]`. Muốn hướng dẫn riêng thì dùng
 MCP tool, hoặc `codex review` với prompt đứng một mình.
 
+### Xem lại lịch sử trò chuyện với Codex
+
+Mỗi lần gọi Codex (qua MCP tool hay CLI) đều tự lưu một session ở
+`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` — đó là lịch sử chat đầy
+đủ (bên giao việc ↔ Codex). Mở lại dưới dạng hội thoại khi cần trình ra:
+
+```bash
+codex resume --last          # mở lại phiên gần nhất trong giao diện chat
+codex resume <session-id>     # hoặc theo id (UUID hay tên phiên)
+```
+
+Không cần dựng terminal riêng để có lịch sử này — MCP tool chạy ngầm vẫn
+tạo đúng session đó; `codex resume` hiển thị nó như một khung hội thoại.
+
 ### Vòng lặp bắt buộc
 
 Review là **điều kiện để được báo hoàn thành**, không phải bước tùy chọn:

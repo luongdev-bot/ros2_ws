@@ -56,6 +56,9 @@ public:
       ignwarn << "Empty driven joint name, using [r_joint]\n";
       this->drivenJointName = "r_joint";
     }
+    // r_joint approaches -1.0 when open; release below this threshold.
+    this->releaseJointPosition = _sdf->Get<double>(
+      "release_joint_position", -0.5).first;
 
     for (auto &mimic : this->mimicJoints)
     {
@@ -99,7 +102,7 @@ public:
     const gz::sim::UpdateInfo &_info,
     gz::sim::EntityComponentManager &_ecm) override
   {
-    this->UpdateMimicJoints(_ecm);
+    const auto drivenPos = this->UpdateMimicJoints(_ecm);
 
     std::optional<gz::msgs::Entity> command;
     {
@@ -130,6 +133,16 @@ public:
       {
         this->lastCommandTime = _info.simTime;
       }
+    }
+
+    if (drivenPos.has_value() &&
+      !this->heldName.empty() &&
+      *drivenPos < this->releaseJointPosition)
+    {
+      this->heldName.clear();
+      this->heldLinks.clear();
+      this->lastType = gz::msgs::Entity::NONE;
+      this->lastName.clear();
     }
 
     if (!this->heldName.empty())
@@ -218,7 +231,8 @@ private:
       });
   }
 
-  void UpdateMimicJoints(gz::sim::EntityComponentManager &_ecm)
+  std::optional<double> UpdateMimicJoints(
+    gz::sim::EntityComponentManager &_ecm)
   {
     if (this->JointEntitiesNeedRefresh(_ecm))
     {
@@ -227,15 +241,16 @@ private:
 
     if (!this->ValidEntity(this->drivenJointEntity, _ecm))
     {
-      return;
+      return std::nullopt;
     }
 
     const auto position = _ecm.ComponentData<gz::sim::components::JointPosition>(
       this->drivenJointEntity);
     if (!position.has_value() || position->empty())
     {
-      return;
+      return std::nullopt;
     }
+    const double drivenPos = position->front();
 
     for (auto &mimic : this->mimicJoints)
     {
@@ -244,7 +259,7 @@ private:
         continue;
       }
 
-      const auto target = ComputeMimicTarget(position->front(), mimic.target);
+      const auto target = ComputeMimicTarget(drivenPos, mimic.target);
       mimic.position[0] = target;
       _ecm.SetComponentData<gz::sim::components::JointPositionReset>(
         mimic.entity, mimic.position);
@@ -256,6 +271,7 @@ private:
         gz::sim::components::JointPositionReset::typeId,
         gz::sim::ComponentState::OneTimeChange);
     }
+    return drivenPos;
   }
 
   void OnCommand(const gz::msgs::Entity &_message)
@@ -338,6 +354,7 @@ private:
   std::vector<gz::sim::Entity> heldLinks;
   std::string drivenJointName{"r_joint"};
   gz::sim::Entity drivenJointEntity{gz::sim::kNullEntity};
+  double releaseJointPosition{-0.5};
   std::array<CachedMimicJoint, 5> mimicJoints{DefaultMimicJoints()};
   std::chrono::steady_clock::duration commandTimeout{
     std::chrono::milliseconds(500)};
