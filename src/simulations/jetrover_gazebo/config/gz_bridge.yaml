@@ -38,6 +38,15 @@
   publisher_queue: 1
   lazy: true
 
+- ros_topic_name: "/world/warehouse/dynamic_pose/info"
+  gz_topic_name: "/world/warehouse/dynamic_pose/info"
+  ros_type_name: "tf2_msgs/msg/TFMessage"
+  gz_type_name: "ignition.msgs.Pose_V"
+  direction: GZ_TO_ROS
+  subscriber_queue: 1
+  publisher_queue: 1
+  lazy: true
+
 # The /grasp/entity_command ROS_TO_GZ bridge is declared positionally in
 # gazebo_arm.launch.py because this ros_gz_bridge version ignores its YAML
 # direction when the bridge also has positional arguments.

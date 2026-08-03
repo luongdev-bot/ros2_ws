@@ -4,6 +4,7 @@ import math
 import threading
 
 import rclpy
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
@@ -46,6 +47,7 @@ class GraspExecutorNode(Node):
 
         self._bins = self._load_bins()
         self._grasp_order = self._load_grasp_order()
+        self.add_on_set_parameters_callback(self._on_set_parameters)
         self._grasp_config = self._load_grasp_config()
         self._auto_grasp = bool(self.get_parameter("auto_grasp").value)
         self._mobile_enabled = bool(
@@ -267,17 +269,33 @@ class GraspExecutorNode(Node):
             bins[color] = coordinates
         return bins
 
-    def _load_grasp_order(self) -> tuple[str, ...]:
-        value = self.get_parameter("grasp_order").value
+    @staticmethod
+    def _coerce_grasp_order(value, logger=None) -> tuple[str, ...]:
         if isinstance(value, str):
             value = [value]
         try:
             return tuple(str(color) for color in value)
         except TypeError:
-            self.get_logger().warning(
-                "invalid grasp_order parameter; using the default order"
-            )
-            return self._BIN_COLORS
+            if logger is not None:
+                logger.warning(
+                    "invalid grasp_order parameter; using the default order"
+                )
+            return GraspExecutorNode._BIN_COLORS
+
+    def _load_grasp_order(self) -> tuple[str, ...]:
+        return self._coerce_grasp_order(
+            self.get_parameter("grasp_order").value,
+            logger=self.get_logger(),
+        )
+
+    def _on_set_parameters(self, params: list) -> SetParametersResult:
+        for param in params:
+            if param.name == "grasp_order":
+                self._grasp_order = self._coerce_grasp_order(
+                    param.value,
+                    logger=self.get_logger(),
+                )
+        return SetParametersResult(successful=True)
 
     def _load_grasp_config(self) -> GraspConfig:
         defaults = GraspConfig()

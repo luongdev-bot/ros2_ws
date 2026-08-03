@@ -1,0 +1,33 @@
+# Camera line-following thresholds and weighted regions of interest.
+#
+# TUNING: every value below is an untuned starting point. The LAB bounds
+# target a dark/black line by default. OpenCV stores LAB as 8-bit channels:
+# L, a, and b are each 0..255, with 128 neutral on a/b.
+#
+# The ROI coordinates assume a 640x480 camera stream. The first band is near
+# the bottom of the image, closest to the robot, and therefore has the highest
+# weight. The upper bands look farther ahead and influence steering less.
+#
+# On the real camera, view the ROI overlays and line detection:
+#
+#   ros2 run rqt_image_view rqt_image_view  # select /line_follow/debug_image
+#   ros2 topic hz /line_follow/debug_image
+#
+# Read LAB values from the actual camera image, then widen the offending
+# lab_min/lab_max channel. If the line disappears, a bound is usually too
+# tight; if the floor is detected, the bounds are too wide.
+
+color:
+  lab_min: [0, 0, 0]
+  lab_max: [80, 140, 140]
+  min_area_px: 80
+
+rois:
+  - {y_min: 380, y_max: 430, x_min: 0, x_max: 640, weight: 0.6}
+  - {y_min: 280, y_max: 330, x_min: 0, x_max: 640, weight: 0.3}
+  - {y_min: 180, y_max: 230, x_min: 0, x_max: 640, weight: 0.1}
+
+pid:
+  kp: 0.006
+  ki: 0.0
+  kd: 0.0

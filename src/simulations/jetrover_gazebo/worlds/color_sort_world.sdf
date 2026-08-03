@@ -134,6 +134,9 @@
           </material>
         </visual>
       </link>
+      <plugin filename="ignition-gazebo-velocity-control-system" name="ignition::gazebo::systems::VelocityControl">
+        <topic>/model/block_red/cmd_vel</topic>
+      </plugin>
     </model>
 
     <model name="block_green">
@@ -162,6 +165,9 @@
           </material>
         </visual>
       </link>
+      <plugin filename="ignition-gazebo-velocity-control-system" name="ignition::gazebo::systems::VelocityControl">
+        <topic>/model/block_green/cmd_vel</topic>
+      </plugin>
     </model>
 
     <!-- Block shelf: raise the four cubes ~3 cm so the gripper's descent grabs
@@ -214,6 +220,9 @@
           </material>
         </visual>
       </link>
+      <plugin filename="ignition-gazebo-velocity-control-system" name="ignition::gazebo::systems::VelocityControl">
+        <topic>/model/block_blue/cmd_vel</topic>
+      </plugin>
     </model>
 
     <model name="block_yellow">
@@ -242,6 +251,9 @@
           </material>
         </visual>
       </link>
+      <plugin filename="ignition-gazebo-velocity-control-system" name="ignition::gazebo::systems::VelocityControl">
+        <topic>/model/block_yellow/cmd_vel</topic>
+      </plugin>
     </model>
 
     <!-- ============ sorting bins (static place targets, shallow open boxes) -->

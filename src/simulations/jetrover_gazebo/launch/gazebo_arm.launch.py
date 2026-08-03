@@ -72,6 +72,15 @@ def generate_launch_description():
         'world',
         default_value=os.path.join(jetrover_gazebo_share, 'worlds', 'jetrover_world.sdf'),
     )
+    world_name_arg = DeclareLaunchArgument(
+        'world_name',
+        default_value='color_blocks_world',
+        description=(
+            'Tên world bên trong Gazebo (thẻ <world name=...> trong file .sdf) — '
+            'dùng để build đúng topic bridge pose/set_pose cho grasp_attacher; '
+            'KHÁC với world_arg là đường dẫn file .sdf.'
+        ),
+    )
     robot_name_arg = DeclareLaunchArgument('robot_name', default_value='jetrover')
 
     # Where to drop the robot. (0, 0) is clear in the JetRover worlds, but a
@@ -173,12 +182,14 @@ def generate_launch_description():
         parameters=[{'use_sim_time': True}],
     )
 
+    world_name = LaunchConfiguration('world_name')
     bridge_node = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
         output='screen',
         arguments=[
-            '/world/color_blocks_world/set_pose@ros_gz_interfaces/srv/SetEntityPose',
+            ['/world/', world_name,
+             '/set_pose@ros_gz_interfaces/srv/SetEntityPose'],
         ],
         parameters=[{
             'config_file': os.path.join(jetrover_gazebo_share, 'config', 'gz_bridge.yaml'),
@@ -193,6 +204,10 @@ def generate_launch_description():
         arguments=[
             '/cmd_vel@geometry_msgs/msg/Twist]ignition.msgs.Twist',
             '/grasp/entity_command@ros_gz_interfaces/msg/Entity]ignition.msgs.Entity',
+            '/model/block_red/cmd_vel@geometry_msgs/msg/Twist]ignition.msgs.Twist',
+            '/model/block_green/cmd_vel@geometry_msgs/msg/Twist]ignition.msgs.Twist',
+            '/model/block_blue/cmd_vel@geometry_msgs/msg/Twist]ignition.msgs.Twist',
+            '/model/block_yellow/cmd_vel@geometry_msgs/msg/Twist]ignition.msgs.Twist',
         ],
         parameters=[{'use_sim_time': True}],
     )
@@ -221,6 +236,10 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'robot_model_name': LaunchConfiguration('robot_name'),
+            'block_pose_topic': ParameterValue(
+                ['/world/', world_name, '/dynamic_pose/info'], value_type=str),
+            'set_pose_service': ParameterValue(
+                ['/world/', world_name, '/set_pose'], value_type=str),
             'use_sim_time': True,
         }],
     )
@@ -247,6 +266,7 @@ def generate_launch_description():
         nv_vk_env,
         SetParameter(name='use_sim_time', value=True),
         world_arg,
+        world_name_arg,
         robot_name_arg,
         spawn_x_arg,
         spawn_y_arg,
