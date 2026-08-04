@@ -83,7 +83,9 @@ PATTERNS=(
   "lib/tf2_ros/static_transform_publisher"
   "lib/controller_manager/spawner"
   "lib/slam_toolbox/sync_slam_toolbox_node"
+  "sync_slam_toolbox_node"
   "lib/rtabmap_slam/rtabmap"
+  "rtabmap_slam/rtabmap"
   "lib/rtabmap_sync/rgbd_sync"
   "lib/rviz2/rviz2"
   # Nav2 runs all its servers inside this container, and the joystick brings up
@@ -115,6 +117,8 @@ fi
 left=$(collect | wc -l)
 if [ "$left" -eq 0 ]; then
   echo "Previous simulation processes cleaned up."
+  exit 0
 else
-  echo "WARNING: $left simulation process(es) still running after cleanup."
+  echo "WARNING: $left simulation process(es) still running after cleanup." >&2
+  exit 1
 fi

@@ -77,7 +77,7 @@ def generate_launch_description():
     )
     world_name_arg = DeclareLaunchArgument(
         'world_name',
-        default_value='color_blocks_world',
+        default_value='jetrover_world',
         description=(
             'Tên world bên trong Gazebo (thẻ <world name=...> trong file .sdf) — '
             'dùng để build đúng topic bridge pose/set_pose cho grasp_attacher; '

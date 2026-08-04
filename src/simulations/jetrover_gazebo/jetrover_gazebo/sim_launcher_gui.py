@@ -150,6 +150,25 @@ def world_digest(path: pathlib.Path) -> str:
         return ""
 
 
+def world_name_from_sdf(path: pathlib.Path) -> str:
+    """Return the Gazebo world name declared inside an SDF file.
+
+    The filename is not authoritative: ``color_sort_world.sdf`` deliberately
+    contains a world named ``color_blocks_world``.  Gazebo's ``/world/<name>``
+    services use the XML name, while the launch argument ``world`` is a file
+    path, so keep both values distinct.
+    """
+    try:
+        root = ET.parse(path).getroot()
+        world = root.find("world")
+        name = world.get("name") if world is not None else None
+        if name:
+            return name
+    except (OSError, ET.ParseError):
+        pass
+    return path.stem
+
+
 def load_catalog(worlds_dir: pathlib.Path) -> list:
     """Every worlds/*.sdf, annotated from config/world_catalog.yaml."""
     entries = {}
@@ -171,6 +190,7 @@ def load_catalog(worlds_dir: pathlib.Path) -> list:
             "id": meta.get("id", sdf.stem),
             "file": sdf.name,
             "path": sdf,
+            "world_name": world_name_from_sdf(sdf),
             # A world with no catalogue entry is still usable - it just shows up
             # under its filename with no blurb.
             "label": meta.get("label", sdf.stem),
@@ -364,6 +384,7 @@ class App(ttk.Frame):
         # looks like the robot. Same reasoning as scripts/run_slam.sh.
         sim = (f"ros2 launch jetrover_gazebo gazebo_arm.launch.py "
                f"world:={sh(share_dir() / 'worlds' / world['file'])} "
+               f"world_name:={sh(world['world_name'])} "
                f"spawn_x:={sh(spawn['x'])} spawn_y:={sh(spawn['y'])} "
                f"spawn_yaw:={sh(spawn['yaw'])} "
                f"initial_positions_file:={sh(arm_pose_file(mode))}")
@@ -371,7 +392,13 @@ class App(ttk.Frame):
         # A leftover Gazebo publishes a second /clock and /tf, which makes TF
         # jump backwards and breaks both RTAB-Map and RViz. This also clears any
         # previous session marker.
-        self.stop_all(quiet=True)
+        if not self.stop_all(quiet=True):
+            messagebox.showerror(
+                "Chưa dừng được phiên cũ",
+                "Vẫn còn tiến trình SLAM/Gazebo/RViz đang chạy.\n\n"
+                "Đã huỷ khởi động để tránh nhiều node cùng publish /map.\n"
+                "Hãy đóng các terminal cũ rồi bấm lại.")
+            return
 
         try:
             open_term("Gazebo", f"{ENV_SETUP}; {sim}")
@@ -627,6 +654,7 @@ class App(ttk.Frame):
         # of which SLAM mode produced the map.
         sim = (f"ros2 launch jetrover_gazebo gazebo_arm.launch.py "
                f"world:={sh(world_path)} "
+               f"world_name:={sh(known[entry['world_file']]['world_name'])} "
                f"spawn_x:={sh(spawn['x'])} spawn_y:={sh(spawn['y'])} "
                f"spawn_yaw:={sh(spawn['yaw'])} "
                f"initial_positions_file:={sh(arm_pose_file('2d'))}")
@@ -635,7 +663,13 @@ class App(ttk.Frame):
         nav = (f"ros2 launch navigation navigation.launch.py use_sim_time:=true "
                f"localization:=true map:={sh(entry['yaml'])} use_rviz:=true")
 
-        self.stop_all(quiet=True)
+        if not self.stop_all(quiet=True):
+            messagebox.showerror(
+                "Chưa dừng được phiên cũ",
+                "Vẫn còn tiến trình SLAM/Gazebo/RViz đang chạy.\n\n"
+                "Đã huỷ khởi động để tránh xung đột /map giữa SLAM và Nav2.\n"
+                "Hãy đóng các terminal cũ rồi bấm lại.")
+            return
         try:
             open_term("Gazebo", f"{ENV_SETUP}; {sim}")
             open_term("Nav2 + RViz", f"{ENV_SETUP}; {WAIT_SIM}; {nav}")
@@ -1029,14 +1063,22 @@ class App(ttk.Frame):
         # stop_sim.sh reads WS from the environment (defaulting to ~/ros2_ws);
         # pass ours so a custom JETROVER_WS cleans up its own workspace rather
         # than the default one.
-        subprocess.run(["bash", str(WS / "scripts/stop_sim.sh")],
-                       env={**os.environ, "WS": str(WS)},
-                       capture_output=True, check=False)
+        result = subprocess.run(
+            ["bash", str(WS / "scripts/stop_sim.sh")],
+            env={**os.environ, "WS": str(WS)},
+            capture_output=True, text=True, check=False)
+        ok = result.returncode == 0
         # The SLAM run this marker described is gone; keeping it would let a
         # later "Lưu map" tag a map with a world that is no longer running.
         SESSION_FILE.unlink(missing_ok=True)
-        if not quiet:
+        if not ok:
+            detail = (result.stderr or result.stdout or "Không rõ lỗi").strip()
+            self.status.set("Không dừng hết được simulation.")
+            if not quiet:
+                messagebox.showerror("Dừng simulation thất bại", detail)
+        elif not quiet:
             self.status.set("Đã dừng simulation.")
+        return ok
 
 
 def main():
