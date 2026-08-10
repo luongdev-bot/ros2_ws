@@ -193,6 +193,13 @@ class OllamaClient(LLMPort):
                     "tự nhận rằng hành động đã hoàn thành."
                 ),
                 (
+                    "Khi người dùng hỏi robot/camera hiện đang thấy gì, vật "
+                    "thể có xuất hiện hay khoảng cách tới vật thể, không được "
+                    "tự trả lời hoặc nói rằng chưa có thông tin hình ảnh; phải "
+                    "gọi describe_current_view hoặc get_object_box_distance "
+                    "tùy câu hỏi."
+                ),
+                (
                     "Nếu lịch sử đã có dòng [Kết quả công cụ ...] cho hành "
                     "động hiện tại, không gọi lại công cụ mà hãy trả lời ngắn "
                     "gọn dựa trên kết quả đó."
@@ -210,6 +217,12 @@ class OllamaClient(LLMPort):
                     '{"tool":"robot_move_control","arguments":'
                     '{"linear_x":0.2,"linear_y":0.0,"angular_z":0.0,'
                     '"duration":2.0}}'
+                ),
+                (
+                    "Ví dụ cho lệnh gắp khối đỏ bỏ vào hộp xanh: "
+                    '{"tool":"arm_transport_function","arguments":'
+                    '{"color":"red","action":"pick",'
+                    '"destination_color":"blue"}}'
                 ),
             ]
         )

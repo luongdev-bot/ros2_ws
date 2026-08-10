@@ -53,6 +53,14 @@ TOOL_SCHEMAS: list[dict] = [
                         "enum": ["red", "green", "blue", "yellow"],
                         "description": "Màu của vật thể cần thao tác.",
                     },
+                    "destination_color": {
+                        "type": "string",
+                        "enum": ["red", "green", "blue", "yellow"],
+                        "description": (
+                            "Màu của hộp/khay đích nếu khác màu vật thể; "
+                            "bỏ trống thì đặt vào hộp cùng màu với vật thể."
+                        ),
+                    },
                     "action": {
                         "type": "string",
                         "enum": ["pick", "place"],

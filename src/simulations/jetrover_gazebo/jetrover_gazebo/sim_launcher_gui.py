@@ -29,7 +29,11 @@ import shutil
 import signal
 import subprocess
 import threading
+import time
 import tkinter as tk
+import urllib.error
+import urllib.request
+import xml.etree.ElementTree as ET
 from tkinter import messagebox, ttk
 
 WS = pathlib.Path(os.environ.get("JETROVER_WS", pathlib.Path.home() / "ros2_ws"))
@@ -67,6 +71,29 @@ ENV_SETUP = (
 )
 WAIT_SIM = ("echo 'Waiting for the simulation (/scan)...'; "
             "until ros2 topic list 2>/dev/null | grep -qx /scan; do sleep 1; done; sleep 2")
+WAIT_NAV = ("echo 'Waiting for Nav2 (/bt_navigator)...'; "
+            "until ros2 node list 2>/dev/null | grep -qx /bt_navigator; "
+            "do sleep 2; done; sleep 1")
+WAIT_CTRL = ("echo 'Waiting for the controller_manager...'; "
+             "until ros2 node list 2>/dev/null | grep -qx /controller_manager; "
+             "do sleep 2; done; echo 'Waiting for arm_controller to become active...'; "
+             "until timeout 5 ros2 control list_controllers 2>/dev/null | "
+             "grep -q 'arm_controller.*active'; do sleep 2; done; sleep 1")
+WAIT_VOICE_DEPS = ("echo 'Waiting for Nav2 (/bt_navigator)...'; "
+                   "until ros2 node list 2>/dev/null | grep -qx /bt_navigator; "
+                   "do sleep 2; done; echo 'Waiting for grasp_executor...'; "
+                   "until ros2 node list 2>/dev/null | grep -qx /grasp_executor; "
+                   "do sleep 2; done; sleep 1")
+WAIT_GRASP_EXECUTOR = ("echo 'Waiting for grasp_executor...'; "
+                       "until ros2 node list 2>/dev/null | grep -qx /grasp_executor; "
+                       "do sleep 2; done; sleep 1")
+
+VOICE_SCENARIOS = (
+    ("Function calling (color_sort, không cần map)", "function_calling"),
+    ("Navigation transport", "navigation_transport"),
+    ("Transport & delivery", "transport_delivery"),
+    ("Road network", "road_network"),
+)
 
 
 def share_dir() -> pathlib.Path:
@@ -78,6 +105,15 @@ def share_dir() -> pathlib.Path:
         # ament_index needs the workspace sourced. Fall back to the install tree
         # so the GUI still reports something useful instead of an import trace.
         return WS / "install/jetrover_gazebo/share/jetrover_gazebo"
+
+
+def voice_scenarios_share_dir() -> pathlib.Path:
+    """Locate the installed voice_llm_scenarios share directory."""
+    try:
+        from ament_index_python.packages import get_package_share_directory
+        return pathlib.Path(get_package_share_directory("voice_llm_scenarios"))
+    except Exception:
+        return WS / "install/voice_llm_scenarios/share/voice_llm_scenarios"
 
 
 def arm_pose_file(slam_mode: str) -> pathlib.Path:
@@ -222,6 +258,7 @@ class App(ttk.Frame):
         notebook.grid(row=0, column=0, sticky="nsew")
         self._build_slam_tab(notebook)
         self._build_nav_tab(notebook)
+        self._build_voice_tab(notebook)
 
         bar = ttk.Frame(self)
         bar.grid(row=1, column=0, sticky="ew", pady=(8, 0))
@@ -541,6 +578,8 @@ class App(ttk.Frame):
             ))
         if self.maps:
             self.map_tree.selection_set(self.maps[0]["map_name"])
+        if hasattr(self, "voice_map_tree"):
+            self._refresh_voice_maps()
 
     def _selected_map(self):
         selection = self.map_tree.selection()
@@ -616,6 +655,374 @@ class App(ttk.Frame):
         shutil.rmtree(entry["dir"], ignore_errors=True)
         self.refresh_maps()
         self.status.set(f"Đã xoá map '{entry['map_name']}'.")
+
+    # ----------------------------------------------------------- Voice Agent
+    def _build_voice_tab(self, notebook):
+        tab = ttk.Frame(notebook, padding=10)
+        notebook.add(tab, text="  3. Voice Agent  ")
+        tab.columnconfigure(0, weight=1)
+        tab.rowconfigure(4, weight=1)
+
+        ttk.Label(tab, text="Chọn kịch bản LLM giọng nói tiếng Việt:",
+                  font=("", 10, "bold")).grid(row=0, column=0, sticky="w")
+
+        self.voice_scenario = tk.StringVar(value=VOICE_SCENARIOS[0][0])
+        scenario_box = ttk.Combobox(
+            tab, textvariable=self.voice_scenario,
+            values=[label for label, _key in VOICE_SCENARIOS],
+            state="readonly", width=52,
+        )
+        scenario_box.grid(row=1, column=0, sticky="w", pady=(4, 12))
+        scenario_box.bind("<<ComboboxSelected>>", self._voice_scenario_changed)
+
+        input_mode_row = ttk.Frame(tab)
+        self.voice_input_mode = tk.StringVar(value="voice")
+        ttk.Label(input_mode_row, text="Cách ra lệnh:",
+                  font=("", 10, "bold")).pack(side="left", padx=(0, 12))
+        ttk.Radiobutton(
+            input_mode_row, text="Giọng nói (mic)", variable=self.voice_input_mode,
+            value="voice",
+        ).pack(side="left", padx=(0, 12))
+        ttk.Radiobutton(
+            input_mode_row, text="Gõ chữ (chat)", variable=self.voice_input_mode,
+            value="text_chat",
+        ).pack(side="left")
+        input_mode_row.grid(row=2, column=0, sticky="w", pady=(0, 12))
+
+        ttk.Label(tab, text="Chọn map đã lưu (không dùng cho Function calling):",
+                  font=("", 10, "bold")).grid(row=3, column=0, sticky="w")
+
+        style = ttk.Style()
+        style.map("VoiceMap.Treeview", foreground=[("disabled", "#999")])
+        self.voice_map_tree = ttk.Treeview(
+            tab, columns=("name", "world", "mode", "created"),
+            show="headings", height=8, style="VoiceMap.Treeview",
+        )
+        for key, text, width in (("name", "Tên map", 200), ("world", "World", 260),
+                                 ("mode", "Chế độ", 80), ("created", "Ngày tạo", 170)):
+            self.voice_map_tree.heading(key, text=text)
+            self.voice_map_tree.column(key, width=width, stretch=(key == "world"))
+        self.voice_map_tree.grid(row=4, column=0, sticky="nsew", pady=(4, 8))
+
+        row = ttk.Frame(tab)
+        row.grid(row=5, column=0, sticky="ew")
+        ttk.Button(row, text="Làm mới", command=self.refresh_maps).pack(side="left")
+        ttk.Button(row, text="Khởi động Voice Agent",
+                   command=self.start_voice_agent).pack(side="right")
+
+        self._refresh_voice_maps()
+        self._voice_scenario_changed()
+
+    def _voice_scenario_key(self):
+        selected = self.voice_scenario.get()
+        return next((key for label, key in VOICE_SCENARIOS if label == selected), None)
+
+    def _voice_scenario_changed(self, _event=None):
+        needs_map = self._voice_scenario_key() != "function_calling"
+        if needs_map:
+            self.voice_map_tree.state(["!disabled"])
+            if not self.voice_map_tree.selection() and self.maps:
+                self.voice_map_tree.selection_set(self.maps[0]["map_name"])
+        else:
+            self.voice_map_tree.selection_remove(*self.voice_map_tree.selection())
+            self.voice_map_tree.state(["disabled"])
+
+    def _refresh_voice_maps(self):
+        selected = self.voice_map_tree.selection()
+        selected_name = selected[0] if selected else None
+        self.voice_map_tree.delete(*self.voice_map_tree.get_children())
+        for entry in self.maps:
+            self.voice_map_tree.insert("", "end", iid=entry["map_name"], values=(
+                entry["map_name"],
+                entry.get("world_label", entry.get("world_file", "?")),
+                str(entry.get("slam_mode", "2d")).upper(),
+                entry.get("created", ""),
+            ))
+        if self._voice_scenario_key() != "function_calling" and self.maps:
+            names = {entry["map_name"] for entry in self.maps}
+            self.voice_map_tree.selection_set(
+                selected_name if selected_name in names else self.maps[0]["map_name"])
+
+    def _selected_voice_map(self):
+        selection = self.voice_map_tree.selection()
+        if not selection:
+            return None
+        return next((m for m in self.maps if m["map_name"] == selection[0]), None)
+
+    @staticmethod
+    def _ollama_responding():
+        try:
+            with urllib.request.urlopen(
+                    "http://localhost:11434/api/version", timeout=2) as response:
+                response.read(1)
+            return True
+        except (OSError, TimeoutError, urllib.error.URLError):
+            return False
+
+    def _ensure_ollama(self):
+        if self._ollama_responding():
+            return True
+
+        ollama_bin = pathlib.Path.home() / ".local/bin/ollama"
+        if not ollama_bin.is_file() or not os.access(ollama_bin, os.X_OK):
+            messagebox.showerror(
+                "Thiếu Ollama",
+                f"Ollama executable is missing or not executable:\n{ollama_bin}")
+            self.status.set("Không thể khởi động Voice Agent: thiếu Ollama.")
+            return False
+
+        self.status.set("Ollama chưa phản hồi; đang thử khởi động Ollama serve...")
+        self.update_idletasks()
+        log_path = pathlib.Path("/tmp/ollama_serve_voice_demo.log")
+        try:
+            with log_path.open("a") as log_file:
+                subprocess.Popen(
+                    [str(ollama_bin), "serve"], stdout=log_file,
+                    stderr=subprocess.STDOUT, start_new_session=True,
+                )
+        except OSError as exc:
+            messagebox.showerror("Không khởi động được Ollama", str(exc))
+            self.status.set("Không thể khởi động Voice Agent: Ollama lỗi.")
+            return False
+
+        for _attempt in range(15):
+            time.sleep(1)
+            if self._ollama_responding():
+                return True
+
+        messagebox.showerror(
+            "Không khởi động được Ollama",
+            "Không khởi động được Ollama. Kiểm tra ~/.local/bin/ollama và log "
+            "/tmp/ollama_serve_voice_demo.log")
+        self.status.set("Không thể khởi động Voice Agent: Ollama không phản hồi.")
+        return False
+
+    @staticmethod
+    def _world_name_from_sdf(world_path):
+        root = ET.parse(world_path).getroot()
+        world = root if root.tag == "world" else root.find("world")
+        world_name = world.get("name", "").strip() if world is not None else ""
+        if not world_name:
+            raise ValueError("không tìm thấy thẻ <world name=...>")
+        return world_name
+
+    def start_voice_agent(self):
+        scenario = self._voice_scenario_key()
+        scenario_label = self.voice_scenario.get()
+        input_mode = self.voice_input_mode.get()
+        if scenario is None:
+            messagebox.showerror("Kịch bản không hợp lệ", "Hãy chọn lại một kịch bản Voice Agent.")
+            return
+
+        voice_python = pathlib.Path.home() / "voice_llm_env/bin/python3"
+        piper_voice = (pathlib.Path.home()
+                       / ".local/share/piper-voices/vi_VN-vais1000-medium.onnx")
+        if not voice_python.is_file() or not os.access(voice_python, os.X_OK):
+            messagebox.showerror(
+                "Thiếu Python cho Voice Agent",
+                f"Voice-agent Python executable is missing or not executable:\n{voice_python}")
+            return
+        if not piper_voice.is_file():
+            messagebox.showerror(
+                "Thiếu giọng Piper",
+                f"Piper Vietnamese voice model is missing:\n{piper_voice}")
+            return
+        if shutil.which("gnome-terminal") is None:
+            messagebox.showerror("Thiếu gnome-terminal", "gnome-terminal is not installed.")
+            return
+        if not self._ensure_ollama():
+            return
+
+        if scenario == "function_calling":
+            self.stop_all(quiet=True)
+            agent_title = ("Voice agent (tiếng Việt)" if input_mode == "voice"
+                           else "Text chat agent (tiếng Việt)")
+            agent_launch = ("voice_agent.launch.py" if input_mode == "voice"
+                            else "text_chat_agent.launch.py")
+            try:
+                open_term(
+                    "Colour sort (Gazebo + grasp)",
+                    f"{ENV_SETUP}; ros2 launch jetrover_grasp grasp_demo.launch.py "
+                    "auto_grasp:=false",
+                )
+                open_term(
+                    agent_title,
+                    f"{ENV_SETUP}; {WAIT_GRASP_EXECUTOR}; "
+                    f"ros2 launch voice_llm_agent {agent_launch}",
+                )
+            except OSError as exc:
+                messagebox.showerror("Không mở được terminal", str(exc))
+                self.status.set("Khởi động Voice Agent thất bại.")
+                return
+            self.status.set(f"Đã mở 2 terminal cho Voice Agent '{scenario_label}'.")
+            return
+
+        entry = self._selected_voice_map()
+        if entry is None:
+            messagebox.showwarning("Chưa chọn map", "Hãy chọn một map trong danh sách.")
+            return
+
+        known = {world["file"]: world for world in self.worlds}
+        if entry["world_file"] not in known:
+            messagebox.showerror(
+                "Thiếu world",
+                f"Map này được tạo trong '{entry['world_file']}', nhưng world đó không còn "
+                "trong package.\n\nChạy lại: colcon build --packages-select jetrover_gazebo")
+            return
+
+        world_path = known[entry["world_file"]]["path"]
+        map_yaml = pathlib.Path(entry["yaml"])
+        pose_file = arm_pose_file("2d")
+        if not world_path.is_file():
+            messagebox.showerror(
+                "Thiếu world", f"World của map '{entry['map_name']}' không tồn tại:\n{world_path}")
+            return
+        if not map_yaml.is_file():
+            messagebox.showerror(
+                "Thiếu map.yaml", f"map.yaml của map '{entry['map_name']}' không tồn tại:\n{map_yaml}")
+            return
+        if not pose_file.is_file():
+            messagebox.showerror(
+                "Thiếu tư thế tay máy", f"File tư thế tay máy 2D không tồn tại:\n{pose_file}")
+            return
+
+        try:
+            world_name = self._world_name_from_sdf(world_path)
+        except (OSError, ET.ParseError, ValueError) as exc:
+            messagebox.showerror(
+                "Không đọc được world_name",
+                f"Không trích xuất được world_name từ SDF:\n{world_path}\n\n{exc}")
+            return
+
+        if entry["map_name"] == "warehouse":
+            locations = voice_scenarios_share_dir() / "config/locations_warehouse.yaml"
+            # Match the shell launchers: a symlink/source checkout may contain a
+            # newer config before the package's data files have been rebuilt.
+            if not locations.is_file():
+                source_locations = (WS / "src/voice_llm_scenarios/config"
+                                    / "locations_warehouse.yaml")
+                if source_locations.is_file():
+                    locations = source_locations
+            if not locations.is_file():
+                messagebox.showerror(
+                    "Thiếu bảng địa điểm",
+                    f"Warehouse locations file is missing:\n{locations}")
+                return
+        else:
+            warning = (
+                f"CẢNH BÁO: Map '{entry['map_name']}' chưa có bảng địa điểm riêng — "
+                "tool di chuyển theo tên địa điểm (move_to_location) sẽ không tìm thấy "
+                "địa điểm nào, các tool khác vẫn hoạt động bình thường."
+            )
+            if scenario == "road_network":
+                warning += (
+                    f"\n\nCẢNH BÁO: Đồ thị đường (ROAD_GRAPH) dùng tên địa điểm của map "
+                    f"warehouse nên không áp dụng được cho map '{entry['map_name']}'; "
+                    "chương trình vẫn tiếp tục chạy."
+                )
+            messagebox.showwarning("Map chưa có bảng địa điểm", warning)
+            locations = ""
+
+        spawn = entry["spawn"]
+        sim = (f"ros2 launch jetrover_gazebo gazebo_arm.launch.py "
+               f"world:={sh(world_path)} world_name:={sh(world_name)} "
+               f"spawn_x:={sh(spawn['x'])} spawn_y:={sh(spawn['y'])} "
+               f"spawn_yaw:={sh(spawn['yaw'])} "
+               f"initial_positions_file:={sh(pose_file)}")
+        nav = ("ros2 launch navigation navigation.launch.py use_sim_time:=true "
+               f"localization:=true map:={sh(map_yaml)} use_rviz:=true")
+
+        if scenario == "navigation_transport":
+            agent_title = ("Voice agent (tiếng Việt)" if input_mode == "voice"
+                           else "Text chat agent (tiếng Việt)")
+            agent_launch = ("voice_agent.launch.py" if input_mode == "voice"
+                            else "text_chat_agent.launch.py")
+            terminals = [
+                (f"Gazebo ({entry['map_name']})", f"{ENV_SETUP}; {sim}"),
+                ("Nav2 + RViz", f"{ENV_SETUP}; {WAIT_SIM}; {nav}"),
+                (agent_title,
+                 f"{ENV_SETUP}; {WAIT_NAV}; ros2 launch voice_llm_agent "
+                 f"{agent_launch} locations_yaml_path:={sh(locations)}"),
+            ]
+        elif scenario == "transport_delivery":
+            agent_title = ("Voice agent (tiếng Việt)" if input_mode == "voice"
+                           else "Text chat agent (tiếng Việt)")
+            agent_launch = ("voice_agent.launch.py" if input_mode == "voice"
+                            else "text_chat_agent.launch.py")
+            grasp = (
+                "ros2 run arm_perception color_pick --ros-args -p use_sim_time:=true "
+                "-p start_enabled:=false & color_pick_pid=$!; "
+                "ros2 run jetrover_grasp grasp_executor --ros-args "
+                "-p use_sim_time:=true -p auto_grasp:=false -p mobile_enabled:=true "
+                "-p 'bin_red:=[-0.135, -0.32, 0.02]' "
+                "-p 'bin_green:=[-0.055, -0.32, 0.02]' "
+                "-p 'bin_blue:=[0.025, -0.32, 0.02]' "
+                "-p 'bin_yellow:=[0.105, -0.32, 0.02]' & grasp_pid=$!; "
+                "wait $color_pick_pid $grasp_pid"
+            )
+            terminals = [
+                (f"Gazebo ({entry['map_name']} + grasp)", f"{ENV_SETUP}; {sim}"),
+                ("Nhận diện màu + tay gắp", f"{ENV_SETUP}; {WAIT_CTRL}; {grasp}"),
+                ("Nav2 + RViz", f"{ENV_SETUP}; {WAIT_SIM}; {nav}"),
+                (agent_title,
+                 f"{ENV_SETUP}; {WAIT_VOICE_DEPS}; ros2 launch voice_llm_agent "
+                 f"{agent_launch} locations_yaml_path:={sh(locations)} "
+                 "grasp_executor_node_name:=grasp_executor"),
+            ]
+        else:
+            if input_mode == "voice":
+                input_process = (
+                    f"LD_LIBRARY_PATH={sh(pathlib.Path.home() / '.local/lib')} "
+                    f"{sh(voice_python)} -m voice_llm_agent.infrastructure.ros.voice_loop_node "
+                    "--ros-args "
+                    "-p user_utterance_topic:=/road_network_tool_executor/user_utterance "
+                    "-p agent_reply_topic:=/road_network_tool_executor/agent_reply "
+                    "-p whisper_model_size:=small -p whisper_language:=vi "
+                    "-p 'whisper_initial_prompt:=Đây là một đoạn hội thoại tiếng Việt với robot.' "
+                    "-p whisper_device:=cpu -p whisper_compute_type:=int8 "
+                    "-p record_seconds:=5.0 -p silence_rms_threshold:=0.05 "
+                    f"-p piper_voice_path:={sh(piper_voice)} "
+                )
+            else:
+                input_process = (
+                    f"LD_LIBRARY_PATH={sh(pathlib.Path.home() / '.local/lib')} "
+                    f"{sh(voice_python)} -m voice_llm_agent.infrastructure.ros.text_chat_node "
+                    "--ros-args "
+                    "-p user_utterance_topic:=/road_network_tool_executor/user_utterance "
+                    "-p agent_reply_topic:=/road_network_tool_executor/agent_reply "
+                    f"-p piper_voice_path:={sh(piper_voice)} "
+                )
+            road_agent = (
+                "ros2 run voice_llm_scenarios road_network_tool_executor --ros-args "
+                "-r __node:=road_network_tool_executor "
+                "-p camera_topic:=/depth_cam/image -p cmd_vel_topic:=/cmd_vel "
+                f"-p locations_yaml_path:={sh(locations)} "
+                "-p ollama_base_url:=http://localhost:11434 "
+                "-p ollama_model:=qwen2.5vl:3b -p nav_timeout_s:=120.0 "
+                "& road_executor_pid=$!; "
+                f"{input_process}"
+                "& voice_loop_pid=$!; wait $road_executor_pid $voice_loop_pid"
+            )
+            agent_title = ("Voice agent (mạng lưới đường)" if input_mode == "voice"
+                           else "Text chat agent (mạng lưới đường)")
+            terminals = [
+                (f"Gazebo ({entry['map_name']})", f"{ENV_SETUP}; {sim}"),
+                ("Nav2 + RViz", f"{ENV_SETUP}; {WAIT_SIM}; {nav}"),
+                (agent_title, f"{ENV_SETUP}; {WAIT_NAV}; {road_agent}"),
+            ]
+
+        self.stop_all(quiet=True)
+        try:
+            for title, command in terminals:
+                open_term(title, command)
+        except OSError as exc:
+            messagebox.showerror("Không mở được terminal", str(exc))
+            self.status.set("Khởi động Voice Agent thất bại.")
+            return
+
+        self.status.set(
+            f"Đã mở {len(terminals)} terminal cho Voice Agent '{scenario_label}' "
+            f"với map '{entry['map_name']}'.")
 
     # ----------------------------------------------------------------- shared
     def stop_all(self, quiet=False):

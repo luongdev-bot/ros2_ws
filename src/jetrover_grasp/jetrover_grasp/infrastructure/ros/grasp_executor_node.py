@@ -34,8 +34,11 @@ class GraspExecutorNode(Node):
     _DEFAULT_PLACE_SWEET_SPOT = (0.025, -0.32)
     _DEFAULT_HOME_ODOM = (0.0, 0.0, 0.0)
 
-    def __init__(self) -> None:
-        super().__init__("grasp_executor")
+    def __init__(self, *, parameter_overrides=None) -> None:
+        super().__init__(
+            "grasp_executor",
+            parameter_overrides=parameter_overrides,
+        )
         self._declare_parameters()
 
         self._callback_group = ReentrantCallbackGroup()
@@ -43,10 +46,17 @@ class GraspExecutorNode(Node):
         self._latest_detections: list[DetectedBlock] = []
         self._done_colours: set[str] = set()
         self._cycle_running = False
+        self._cycle_done_event = threading.Event()
+        self._last_cycle_success = False
         self._worker_thread = None
 
         self._bins = self._load_bins()
         self._grasp_order = self._load_grasp_order()
+        self._place_color_override = self._coerce_place_color_override(
+            self.get_parameter("place_color_override").value,
+            set(self._bins),
+            logger=self.get_logger(),
+        )
         self.add_on_set_parameters_callback(self._on_set_parameters)
         self._grasp_config = self._load_grasp_config()
         self._auto_grasp = bool(self.get_parameter("auto_grasp").value)
@@ -81,6 +91,11 @@ class GraspExecutorNode(Node):
         self._base_timeout_s = self._load_scalar_parameter(
             "base_timeout_s",
             12.0,
+            nonnegative=True,
+        )
+        self._cycle_completion_timeout_s = self._load_scalar_parameter(
+            "cycle_completion_timeout_s",
+            180.0,
             nonnegative=True,
         )
 
@@ -175,6 +190,7 @@ class GraspExecutorNode(Node):
             "grasp_order",
             ["red", "green", "blue", "yellow"],
         )
+        self.declare_parameter("place_color_override", "")
 
         self.declare_parameter("mobile_enabled", True)
         self.declare_parameter(
@@ -192,6 +208,7 @@ class GraspExecutorNode(Node):
             list(self._DEFAULT_HOME_ODOM),
         )
         self.declare_parameter("base_timeout_s", 12.0)
+        self.declare_parameter("cycle_completion_timeout_s", 180.0)
 
         defaults = GraspConfig()
         self.declare_parameter(
@@ -288,12 +305,38 @@ class GraspExecutorNode(Node):
             logger=self.get_logger(),
         )
 
+    @staticmethod
+    def _coerce_place_color_override(
+        value,
+        valid_colors,
+        logger=None,
+    ) -> str:
+        if not value:
+            return ""
+        color = str(value).strip().lower()
+        if color not in valid_colors:
+            if logger is not None:
+                logger.warning(
+                    "invalid place_color_override parameter; placing in the "
+                    "object's own bin"
+                )
+            return ""
+        return color
+
     def _on_set_parameters(self, params: list) -> SetParametersResult:
         for param in params:
             if param.name == "grasp_order":
                 self._grasp_order = self._coerce_grasp_order(
                     param.value,
                     logger=self.get_logger(),
+                )
+            elif param.name == "place_color_override":
+                self._place_color_override = (
+                    self._coerce_place_color_override(
+                        param.value,
+                        set(self._bins),
+                        logger=self.get_logger(),
+                    )
                 )
         return SetParametersResult(successful=True)
 
@@ -373,8 +416,16 @@ class GraspExecutorNode(Node):
             response.message = "grasp cycle already running"
             return response
 
-        response.success = True
-        response.message = "started"
+        finished = self._cycle_done_event.wait(
+            self._cycle_completion_timeout_s
+        )
+        if not finished:
+            response.success = False
+            response.message = "grasp cycle timed out"
+            return response
+
+        response.success = self._last_cycle_success
+        response.message = "completed" if response.success else "failed"
         return response
 
     def _start_cycle(self) -> bool:
@@ -382,6 +433,7 @@ class GraspExecutorNode(Node):
             if self._cycle_running:
                 return False
             self._cycle_running = True
+            self._cycle_done_event.clear()
 
         worker = threading.Thread(
             target=self._run_cycle,
@@ -398,18 +450,26 @@ class GraspExecutorNode(Node):
         return True
 
     def _run_cycle(self) -> None:
+        success = False
         try:
             with self._state_lock:
                 detections = list(self._latest_detections)
+                place_color_override = self._place_color_override
             targets = rank_targets(detections, self._allowed_colours())
             if not targets:
                 self.get_logger().warning("no allowed target")
                 return
 
             if self._mobile_enabled:
-                self._run_mobile_cycle(targets)
+                success = self._run_mobile_cycle(
+                    targets,
+                    place_color_override,
+                )
             else:
-                self._run_fixed_base_cycle(targets)
+                success = self._run_fixed_base_cycle(
+                    targets,
+                    place_color_override,
+                )
         except Exception as exc:
             self.get_logger().error(f"grasp cycle failed: {exc}")
             self._attempt_recovery()
@@ -422,6 +482,8 @@ class GraspExecutorNode(Node):
                 )
             with self._state_lock:
                 self._cycle_running = False
+                self._last_cycle_success = success
+                self._cycle_done_event.set()
 
     def _localize_target(self, target: DetectedBlock):
         try:
@@ -534,11 +596,15 @@ class GraspExecutorNode(Node):
             ranked = rank_targets(targets, allowed_colours)
         return ranked[0] if ranked else None
 
-    def _run_mobile_cycle(self, targets: list[DetectedBlock]) -> None:
+    def _run_mobile_cycle(
+        self,
+        targets: list[DetectedBlock],
+        place_color_override: str,
+    ) -> bool:
         target = self._select_mobile_target(targets)
         if target is None:
             self.get_logger().warning("no allowed mobile target")
-            return
+            return False
 
         for target in (target,):
             block_base = self._localize_target(target)
@@ -550,7 +616,7 @@ class GraspExecutorNode(Node):
                 self.get_logger().warning(
                     "no odometry yet; cannot drive to block"
                 )
-                return
+                return False
 
             goal = base_goal_to_center_target(
                 block_base[:2],
@@ -568,7 +634,7 @@ class GraspExecutorNode(Node):
             )
             self.get_logger().info(f"driving to block {target.color}")
             if not self._drive_or_recover(goal, f"block {target.color}"):
-                return
+                return False
 
             self.get_logger().info(
                 f"reached block {target.color}, grasping"
@@ -586,16 +652,16 @@ class GraspExecutorNode(Node):
                     "block not reachable after centering"
                 )
                 self._attempt_recovery()
-                return
+                return False
             lift_joints = pick[-1].joint_positions
             if not self._execute_waypoints(pick):
                 self._attempt_recovery()
-                return
+                return False
 
             # For this short demo the bins are fixed points in the odom
             # frame: odom is initialized at the world origin at spawn, so
             # world and odom coordinates are treated as equivalent.
-            bin_world = self._bins[target.color]
+            bin_world = self._bins[place_color_override or target.color]
             goal_yaw = self._home_odom[2]
             cos_goal_yaw = math.cos(goal_yaw)
             sin_goal_yaw = math.sin(goal_yaw)
@@ -611,7 +677,7 @@ class GraspExecutorNode(Node):
             )
             self.get_logger().info(f"driving to bin {target.color}")
             if not self._drive_or_recover(goal_bin, f"bin {target.color}"):
-                return
+                return False
 
             place = plan_place(
                 (
@@ -627,10 +693,10 @@ class GraspExecutorNode(Node):
                     f"bin {target.color} not reachable after centering"
                 )
                 self._attempt_recovery()
-                return
+                return False
             if not self._execute_waypoints(place):
                 self._attempt_recovery()
-                return
+                return False
 
             self._mark_colour_done(target.color)
             self.get_logger().info(f"sorted {target.color}")
@@ -648,11 +714,16 @@ class GraspExecutorNode(Node):
                     self.get_logger().warning(
                         f"failed to return home after {target.color}"
                     )
-            return
+            return True
 
         self.get_logger().warning("no localizable target")
+        return False
 
-    def _run_fixed_base_cycle(self, targets: list[DetectedBlock]) -> None:
+    def _run_fixed_base_cycle(
+        self,
+        targets: list[DetectedBlock],
+        place_color_override: str,
+    ) -> bool:
         """Retain the original fixed-base execution path."""
         for target in targets:
             block_xyz = self._localize_target(target)
@@ -662,7 +733,7 @@ class GraspExecutorNode(Node):
             try:
                 plan = plan_pick_and_place(
                     block_xyz,
-                    self._bins[target.color],
+                    self._bins[place_color_override or target.color],
                     self._grasp_config,
                 )
             except Exception as exc:
@@ -678,16 +749,17 @@ class GraspExecutorNode(Node):
                 continue
             if not self._execute_waypoints(plan):
                 self._attempt_recovery()
-                return
+                return False
 
             self._mark_colour_done(target.color)
             self.get_logger().info(f"sorted {target.color}")
             self.get_logger().info(
                 f"grasp cycle complete for {target.color}"
             )
-            return
+            return True
 
         self.get_logger().warning("no reachable target")
+        return False
 
     def _attempt_recovery(self) -> None:
         """Best-effort stop, release, and return to home."""

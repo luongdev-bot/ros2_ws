@@ -29,9 +29,12 @@ def generate_launch_description():
     jetrover_gazebo_share = get_package_share_directory('jetrover_gazebo')
     jetrover_moveit_config_share = get_package_share_directory('jetrover_moveit_config')
 
+    # Gazebo resolves both the JetRover description and the vendored
+    # turtlebot3_house model through their respective per-package share roots.
     resource_path_env = SetEnvironmentVariable(
         'GZ_SIM_RESOURCE_PATH',
         os.path.dirname(jetrover_description_share) + ':' +
+        os.path.dirname(jetrover_gazebo_share) + ':' +
         os.environ.get('GZ_SIM_RESOURCE_PATH', ''),
     )
 

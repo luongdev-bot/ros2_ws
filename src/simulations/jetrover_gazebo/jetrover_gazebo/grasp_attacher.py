@@ -56,7 +56,8 @@ class GraspAttacher(Node):
         self.declare_parameter('block_name_prefix', 'block_')
         self.declare_parameter('open_position', -1.00)
         self.declare_parameter('closed_position', 0.30)
-        self.declare_parameter('closed_position_tolerance', 0.05)
+        # Allow loaded-joint drift during transport while staying far from open.
+        self.declare_parameter('closed_position_tolerance', 0.15)
         self.declare_parameter('open_position_tolerance', 0.05)
         self.declare_parameter('grasp_radius', 0.045)
         self.declare_parameter('update_rate', 50.0)

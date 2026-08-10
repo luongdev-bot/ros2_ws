@@ -25,7 +25,7 @@ def generate_launch_description():
 
     camera_topic = DeclareLaunchArgument(
         "camera_topic",
-        default_value="depth_cam/rgb/image_raw",
+        default_value="/depth_cam/image",
         description="RGB camera stream used by the tool executor.",
     )
     cmd_vel_topic = DeclareLaunchArgument(

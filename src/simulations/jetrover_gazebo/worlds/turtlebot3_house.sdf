@@ -1,0 +1,112 @@
+<?xml version="1.0"?>
+<!--
+  Vendored from ROBOTIS-GIT/turtlebot3_simulations:
+  turtlebot3_gazebo/worlds/turtlebot3_house.world
+  License: Apache-2.0 (ROBOTIS / Taehun Lim).
+
+  Local changes vs upstream:
+    * renamed the world from "default" to "turtlebot3_house" so it has a
+      stable, catalogue-visible world name.
+    * replaced the Fuel Ground Plane and Sun includes with this package's
+      local scene, directional light, and collision ground plane, so the
+      world has no runtime Fuel dependency.
+    * used this workspace's established Ignition Gazebo system plugin names
+      (physics, user commands, scene broadcaster, sensors, and imu) so the
+      JetRover sensors and bridges are initialised consistently with the
+      other local worlds.
+    * aligned the physics block with the stable 1 ms block used by
+      apartment.sdf.
+
+  The house includes its furniture (mailbox, two cafe tables, a trash can,
+  and a marble table); their meshes and textures are vendored under
+  models/turtlebot3_house/.
+-->
+<sdf version="1.9">
+  <world name="turtlebot3_house">
+
+    <gui fullscreen="0">
+      <camera name="user_camera">
+        <pose>0.319654 -0.235002 9.29441 0 1.5138 0.009599</pose>
+        <view_controller>orbit</view_controller>
+        <projection_type>perspective</projection_type>
+      </camera>
+    </gui>
+
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin
+      filename="ignition-gazebo-physics-system"
+      name="ignition::gazebo::systems::Physics">
+    </plugin>
+    <plugin
+      filename="ignition-gazebo-user-commands-system"
+      name="ignition::gazebo::systems::UserCommands">
+    </plugin>
+    <plugin
+      filename="ignition-gazebo-scene-broadcaster-system"
+      name="ignition::gazebo::systems::SceneBroadcaster">
+    </plugin>
+    <plugin
+      filename="ignition-gazebo-sensors-system"
+      name="ignition::gazebo::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin
+      filename="ignition-gazebo-imu-system"
+      name="ignition::gazebo::systems::Imu">
+    </plugin>
+
+    <scene>
+      <ambient>0.6 0.6 0.6 1</ambient>
+      <background>0.7 0.75 0.8 1</background>
+      <shadows>true</shadows>
+    </scene>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>1 1 1 1</diffuse>
+      <specular>0.4 0.4 0.4 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane><normal>0 0 1</normal><size>60 60</size></plane>
+          </geometry>
+          <surface>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane><normal>0 0 1</normal><size>60 60</size></plane>
+          </geometry>
+          <material>
+            <ambient>0.75 0.75 0.72 1</ambient>
+            <diffuse>0.75 0.75 0.72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="turtlebot3_house">
+      <static>1</static>
+      <include>
+        <uri>model://turtlebot3_house</uri>
+      </include>
+    </model>
+
+  </world>
+</sdf>

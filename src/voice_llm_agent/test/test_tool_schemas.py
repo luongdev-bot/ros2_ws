@@ -36,6 +36,18 @@ def test_tool_schemas_contain_exactly_eight_valid_functions() -> None:
         assert parameters["properties"]
 
 
+def test_arm_transport_destination_color_is_optional() -> None:
+    arm_transport = next(
+        schema
+        for schema in TOOL_SCHEMAS
+        if schema["function"]["name"] == "arm_transport_function"
+    )
+    parameters = arm_transport["function"]["parameters"]
+
+    assert "destination_color" in parameters["properties"]
+    assert "destination_color" not in parameters["required"]
+
+
 def test_with_location_enum() -> None:
     original_tools = copy.deepcopy(TOOL_SCHEMAS)
 

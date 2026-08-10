@@ -83,6 +83,7 @@ class VoiceLoopNode(Node):
             10,
         )
 
+        self._audio_device_lock = threading.Lock()
         self._stop_event = threading.Event()
         self._listen_thread = threading.Thread(
             target=self._listen_loop,
@@ -91,8 +92,18 @@ class VoiceLoopNode(Node):
         self._listen_thread.start()
 
     def _on_agent_reply(self, message: String) -> None:
+        worker = threading.Thread(
+            target=self._speak_reply,
+            args=(message.data,),
+            daemon=True,
+            name="voice_loop_tts",
+        )
+        worker.start()
+
+    def _speak_reply(self, reply: str) -> None:
         try:
-            self._tts.speak(message.data)
+            with self._audio_device_lock:
+                self._tts.speak(reply)
         except Exception as error:
             self.get_logger().error(
                 f"Không thể phát phản hồi bằng giọng nói: {error}"
@@ -101,7 +112,8 @@ class VoiceLoopNode(Node):
     def _listen_loop(self) -> None:
         while not self._stop_event.is_set():
             try:
-                text = self._asr.listen().strip()
+                with self._audio_device_lock:
+                    text = self._asr.listen().strip()
                 rms = self._asr.last_rms
                 self.get_logger().info(
                     f"RMS đo được: {rms:.4f} "

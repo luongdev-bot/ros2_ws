@@ -25,10 +25,13 @@ def generate_launch_description():
     # URDF mesh URIs are `package://jetrover_description/...`; sdformat_urdf
     # rewrites that prefix to `model://jetrover_description/...`, which Gazebo
     # Sim can only resolve if a directory literally named `jetrover_description`
-    # is on GZ_SIM_RESOURCE_PATH. share/jetrover_description satisfies that.
+    # is on GZ_SIM_RESOURCE_PATH. The vendored turtlebot3_house model is
+    # similarly installed under this package's share root as
+    # share/turtlebot3_house, so expose both per-package install roots.
     resource_path_env = SetEnvironmentVariable(
         'GZ_SIM_RESOURCE_PATH',
         os.path.dirname(jetrover_description_share) + ':' +
+        os.path.dirname(jetrover_gazebo_share) + ':' +
         os.environ.get('GZ_SIM_RESOURCE_PATH', ''),
     )
 

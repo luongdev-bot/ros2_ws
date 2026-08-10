@@ -46,11 +46,13 @@ class ToolExecutorNode(Node, RobotToolExecutorPort):
 
     _SERVICE_WAIT_TIMEOUT_S = 5.0
     _SERVICE_RESPONSE_TIMEOUT_S = 10.0
+    # Must exceed grasp_executor's 180s default so its response wins the race.
+    _GRASP_CYCLE_TIMEOUT_S = 200.0
 
     def __init__(self) -> None:
         super().__init__("tool_executor")
 
-        self.declare_parameter("camera_topic", "depth_cam/rgb/image_raw")
+        self.declare_parameter("camera_topic", "/depth_cam/image")
         self.declare_parameter("cmd_vel_topic", "/cmd_vel")
         self.declare_parameter("grasp_executor_node_name", "grasp_executor")
         self.declare_parameter(
@@ -175,6 +177,7 @@ class ToolExecutorNode(Node, RobotToolExecutorPort):
 
     def _on_user_utterance(self, message: String) -> None:
         """Start slow LLM/tool orchestration outside executor callbacks."""
+        self.get_logger().info(f"Đã nhận phát ngôn: {message.data}")
         worker = threading.Thread(
             target=self._handle_user_utterance,
             args=(message.data,),
@@ -185,11 +188,13 @@ class ToolExecutorNode(Node, RobotToolExecutorPort):
 
     def _handle_user_utterance(self, user_text: str) -> None:
         try:
+            self.get_logger().info("Đang xử lý phát ngôn qua LLM...")
             reply = self._process_utterance.handle(user_text)
         except Exception as error:
             self.get_logger().error(f"Không thể xử lý phát ngôn: {error}")
             reply = "Không thể xử lý yêu cầu lúc này."
         self._agent_reply_publisher.publish(String(data=reply))
+        self.get_logger().info(f"Đã gửi phản hồi: {reply}")
 
     def _on_image(self, message: Image) -> None:
         try:
@@ -344,7 +349,12 @@ class ToolExecutorNode(Node, RobotToolExecutorPort):
             f"trong {duration} giây."
         )
 
-    def arm_transport_function(self, color: str, action: str) -> str:
+    def arm_transport_function(
+        self,
+        color: str,
+        action: str,
+        destination_color: str = "",
+    ) -> str:
         """Run the whole grasp-and-place cycle for the requested color.
 
         ``grasp_executor`` cannot split pick from place, so ``action`` is
@@ -368,7 +378,14 @@ class ToolExecutorNode(Node, RobotToolExecutorPort):
                         type=ParameterType.PARAMETER_STRING_ARRAY,
                         string_array_value=[color],
                     ),
-                )
+                ),
+                Parameter(
+                    name="place_color_override",
+                    value=ParameterValue(
+                        type=ParameterType.PARAMETER_STRING,
+                        string_value=destination_color,
+                    ),
+                ),
             ]
             set_response = self._wait_for_future_result(
                 self._grasp_parameters_client.call_async(set_request),
@@ -388,16 +405,25 @@ class ToolExecutorNode(Node, RobotToolExecutorPort):
 
             grasp_response = self._wait_for_future_result(
                 self._grasp_trigger_client.call_async(Trigger.Request()),
-                self._SERVICE_RESPONSE_TIMEOUT_S,
+                self._GRASP_CYCLE_TIMEOUT_S,
             )
             if grasp_response is not None and grasp_response.success:
-                return f"Đã bắt đầu gắp và đặt vật màu {color}."
+                return f"Đã gắp và đặt xong vật màu {color}."
             if (
                 grasp_response is not None
                 and grasp_response.message.strip().lower()
                 == "grasp cycle already running"
             ):
                 return "Tay máy đang bận với một vật khác, vui lòng đợi."
+            if (
+                grasp_response is not None
+                and grasp_response.message.strip().lower()
+                == "grasp cycle timed out"
+            ):
+                return (
+                    f"Thao tác gắp vật màu {color} mất quá nhiều thời gian, "
+                    "vui lòng thử lại."
+                )
             return f"Không thể gắp và đặt vật màu {color}."
         except TimeoutError as error:
             self.get_logger().error(f"Hết thời gian chờ hệ thống gắp: {error}")

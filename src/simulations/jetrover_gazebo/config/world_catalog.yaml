@@ -70,6 +70,15 @@ worlds:
     slam_friendly: true
     fuel: true
 
+  - id: turtlebot3_house
+    file: turtlebot3_house.sdf
+    label: "Nhà TurtleBot3 (ROBOTIS)"
+    description: "Bố cục nhà nhiều phòng có nội thất (hộp thư, bàn cà phê, thùng rác, bàn đá cẩm thạch), phù hợp demo SLAM/Nav2 tổng quát; nguồn gốc từ world chính thức của ROBOTIS."
+    # ROBOTIS canonical pose for this layout (turtlebot3_house.launch.py defaults: x_pose=-2.0, y_pose=-0.5).
+    spawn: {x: -2.0, y: -0.5, yaw: 0.0}
+    slam_friendly: true
+    fuel: false
+
   - id: warehouse
     file: warehouse.sdf
     label: "Kho hàng AWS RoboMaker"
